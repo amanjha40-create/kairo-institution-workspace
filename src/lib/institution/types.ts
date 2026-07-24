@@ -1,0 +1,222 @@
+// Institution Workspace typed models.
+// BACKEND-INTEGRATION: these mirror the shapes we expect Kairo's backend to return.
+
+export type VerificationStatus =
+  | "pending"
+  | "in_progress"
+  | "awaiting_clarification"
+  | "confirmed"
+  | "discrepancy"
+  | "closed";
+
+export type MatchStatus = "exact" | "partial" | "no_match" | "record_unavailable";
+
+export type InstitutionStatus = "current_student" | "alumni" | "withdrawn" | "inactive";
+
+export type TrustStatus = "institution_verified" | "pending" | "disputed" | "revoked";
+
+export type PassportStatus = "connected" | "not_connected" | "sharing_limited";
+
+export type Role = "owner" | "admin" | "reviewer";
+
+export type AccountStatus = "active" | "invited" | "pending_review" | "suspended";
+
+export type InstitutionWorkspaceStatus = "pending_review" | "active" | "suspended" | "inactive";
+
+export interface CandidateClaim {
+  candidateName: string;
+  studentId?: string;
+  institutionName: string;
+  degree: string;
+  programme: string;
+  department: string;
+  admissionYear: string;
+  graduationYear: string;
+  completionStatus: string;
+  additionalNote?: string;
+}
+
+export interface InstitutionRecord {
+  found: boolean;
+  studentId?: string;
+  officialName?: string;
+  degree?: string;
+  programme?: string;
+  department?: string;
+  admissionDate?: string;
+  graduationDate?: string;
+  completionStatus?: string;
+  credentialIssuanceStatus?: string;
+}
+
+export interface EvidenceFile {
+  id: string;
+  name: string;
+  type: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  url?: string;
+}
+
+export interface InternalNote {
+  id: string;
+  author: string;
+  createdAt: string;
+  body: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  at: string;
+  label: string;
+  detail?: string;
+}
+
+export interface VerificationRequest {
+  id: string;
+  reference: string;
+  candidateName: string;
+  candidateId: string;
+  requestedBy: string;
+  requestPurpose: string;
+  requestingContact?: string;
+  status: VerificationStatus;
+  receivedAt: string;
+  dueAt?: string;
+  assignedTo?: string;
+  nextAction?: string;
+  consentReceived: boolean;
+  claim: CandidateClaim;
+  institutionRecord: InstitutionRecord;
+  matchStatus: MatchStatus;
+  fieldMatches?: Record<string, "match" | "different">;
+  evidence: EvidenceFile[];
+  internalNotes: InternalNote[];
+  timeline: TimelineEvent[];
+}
+
+export interface SharedProfessionalProfile {
+  consented: boolean;
+  currentTitle?: string;
+  currentCompany?: string;
+  industry?: string;
+  location?: string;
+  credentials?: { name: string; verifiedAt: string }[];
+  lastUpdated?: string;
+}
+
+export interface InstitutionCredential {
+  id: string;
+  name: string;
+  status: "verified" | "pending" | "corrected" | "revoked";
+  issueDate: string;
+  lastUpdated: string;
+  history: { at: string; label: string }[];
+  revokedReason?: string;
+}
+
+export interface InstitutionRelationship {
+  institutionName: string;
+  studentId: string;
+  status: InstitutionStatus;
+  degree: string;
+  programme: string;
+  department: string;
+  admissionPeriod: string;
+  graduationPeriod: string;
+  verificationStatus: TrustStatus;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  institutionStatus: InstitutionStatus;
+  trustStatus: TrustStatus;
+  passportStatus: PassportStatus;
+  degree: string;
+  graduationYear: string;
+  relationship: InstitutionRelationship;
+  sharedProfile: SharedProfessionalProfile;
+  credentials: InstitutionCredential[];
+  verificationActivity: {
+    id: string;
+    requestingOrg: string;
+    date: string;
+    result: string;
+    reviewer: string;
+    status: VerificationStatus;
+    requestId?: string;
+  }[];
+  timeline: TimelineEvent[];
+  lastUpdated: string;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  status: "active" | "pending" | "suspended";
+  lastActive?: string;
+}
+
+export interface Institution {
+  id: string;
+  name: string;
+  type: string;
+  website: string;
+  address: string;
+  primaryVerificationEmail: string;
+  domain: string;
+  logoUrl?: string;
+}
+
+export interface InstitutionSettings {
+  institution: Institution;
+  preferences: {
+    defaultReviewer: string;
+    defaultResponseEmail: string;
+    assignmentPreference: "manual" | "round_robin" | "load_based";
+    notifyOnNewRequest: boolean;
+    notifyOnClarification: boolean;
+    responseSlaHours?: number;
+  };
+  connectedData: {
+    sisStatus: "not_connected" | "pending" | "connected" | "error";
+    databaseStatus: "not_connected" | "pending" | "connected" | "error";
+    apiStatus: "not_connected" | "pending" | "connected" | "error";
+    batchImportStatus: "not_connected" | "pending" | "connected" | "error";
+  };
+  security: {
+    activeSessions: { id: string; device: string; location: string; lastActive: string }[];
+    domainVerified: boolean;
+  };
+}
+
+export interface MagicLinkRequest {
+  token: string;
+  state: "valid" | "expired" | "completed" | "revoked" | "invalid";
+  expiresAt?: string;
+  request?: {
+    reference: string;
+    requestedBy: string;
+    purpose: string;
+    requestDate: string;
+    consentReceived: boolean;
+    candidate: CandidateClaim;
+    evidence: EvidenceFile[];
+  };
+}
+
+export interface Session {
+  userId: string;
+  membershipId: string;
+  institutionId: string;
+  name: string;
+  email: string;
+  role: Role;
+  institutionName: string;
+  accountStatus: AccountStatus;
+  workspaceStatus: InstitutionWorkspaceStatus;
+  expiresAt?: string;
+}
