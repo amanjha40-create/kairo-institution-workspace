@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SignupShell } from "@/components/institution/SignupShell";
-import { EmptyState, ServiceUnavailableState } from "@/components/institution/PageStates";
+import { EmptyState } from "@/components/institution/PageStates";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Sparkles } from "lucide-react";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig } from "@/lib/institution/config";
 import {
   createMockApprovedInstitutionSession,
@@ -29,22 +30,12 @@ export const Route = createFileRoute("/institution/signup/success")({
 
 function SuccessPage() {
   const navigate = useNavigate();
+  const { session } = useInstitutionAuth();
   const [app, setApp] = useState<WorkspaceApplication | null>(null);
 
   useEffect(() => {
     setApp(getInstitutionWorkspaceApplication());
   }, []);
-
-  if (!institutionAppConfig.demoMode) {
-    return (
-      <SignupShell step="review" title="Institution workspace request unavailable">
-        <ServiceUnavailableState
-          title="Institution signup is not live yet"
-          description="Production mode does not create institution workspaces until the approved institution onboarding APIs are available."
-        />
-      </SignupShell>
-    );
-  }
 
   if (!app) {
     return (
@@ -80,8 +71,9 @@ function SuccessPage() {
         <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-700" />
           <p className="text-sm text-emerald-900">
-            We have received your request for <strong>{institutionName}</strong>. You will be
-            notified after the institution details and administrator authority are reviewed.
+            Your workspace for <strong>{institutionName}</strong> has been created. Institution
+            verification and approval continue separately while your team can now sign in and use
+            the workspace context.
           </p>
         </div>
 
@@ -101,9 +93,15 @@ function SuccessPage() {
           <Button asChild variant="ghost">
             <Link to="/institution">Return to Kairo for Institutions</Link>
           </Button>
-          <Button asChild>
-            <Link to="/institution/login">Go to sign in</Link>
-          </Button>
+          {session ? (
+            <Button asChild>
+              <Link to="/institution/verifications">Open Workspace</Link>
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link to="/institution/login">Go to sign in</Link>
+            </Button>
+          )}
         </div>
 
         {institutionAppConfig.demoMode && (

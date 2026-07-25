@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { SignupShell } from "@/components/institution/SignupShell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import {
@@ -36,6 +37,7 @@ const METHOD_LABEL: Record<VerificationMethod, string> = {
 
 function ReviewStep() {
   const navigate = useNavigate();
+  const { refreshSession } = useInstitutionAuth();
   const [draft, setDraft] = useState<InstitutionSignupDraft | null>(null);
   const [ack, setAck] = useState({ terms: false, privacy: false, authority: false });
   const [submitting, setSubmitting] = useState(false);
@@ -59,7 +61,7 @@ function ReviewStep() {
 
   const workspaceStatus =
     draft.verification.method === "email" && draft.verification.emailStatus === "verified"
-      ? "Verification Pending — email verified"
+      ? "Workspace created and pending institution verification"
       : draft.verification.method === "manual"
         ? "Verification Pending — manual review"
         : "Email Verification Required";
@@ -76,6 +78,7 @@ function ReviewStep() {
         acceptedAuthority: ack.authority,
       });
       await submitInstitutionWorkspaceApplication();
+      await refreshSession();
       navigate({ to: "/institution/signup/success" });
     } catch (err) {
       setError(getInstitutionErrorMessage(err));
@@ -91,10 +94,10 @@ function ReviewStep() {
       description="Confirm your details before creating the workspace request."
     >
       <div className="space-y-5">
-        {!institutionAppConfig.demoMode && (
+        {!institutionAppConfig.demoMode && !institutionAppConfig.backendConfigured && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Production mode does not submit institution workspace requests until approved
-            institution APIs are connected.
+            Institution signup is unavailable until the shared backend API base URL is configured
+            for this workspace.
           </div>
         )}
         <SummarySection title="Institution">
@@ -158,7 +161,7 @@ function ReviewStep() {
             <Link to="/institution/signup/verify">Edit Details</Link>
           </Button>
           <Button type="button" onClick={onSubmit} disabled={!allAccepted || submitting}>
-            {submitting ? "Submitting…" : "Submit Workspace Request"}
+            {submitting ? "Creating workspace…" : "Create Institution Workspace"}
           </Button>
         </div>
       </div>

@@ -46,8 +46,13 @@ function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      await signIn(email, password);
-      navigate({ to: search.redirect ?? "/institution/verifications", replace: true });
+      const nextSession = await signIn(email, password);
+      navigate({
+        to: nextSession
+          ? (search.redirect ?? "/institution/verifications")
+          : "/institution/signup/institution",
+        replace: true,
+      });
     } catch (err) {
       setError(getInstitutionErrorMessage(err, "We couldn't sign you in."));
     } finally {
@@ -98,7 +103,7 @@ function LoginPage() {
                       toast.success(
                         isDemoMode
                           ? "Demo password reset request accepted."
-                          : "Password reset is not available yet for institution accounts.",
+                          : "If an account exists for that email, a password reset email has been sent.",
                       );
                     } catch (err) {
                       setError(getInstitutionErrorMessage(err));

@@ -1,5 +1,15 @@
+import {
+  completeInstitutionWorkspaceOnboarding,
+  completeOrganizationStaffSignup,
+  getStoredInstitutionAuthTokens,
+  refreshInstitutionUserSession,
+  sendOrganizationStaffSignupEmail,
+  startOrganizationStaffSignup,
+  storeInstitutionAuthTokens,
+  verifyOrganizationStaffSignupEmail,
+} from "./backend";
 import { institutionAppConfig } from "./config";
-import { apiNotConfiguredError } from "./errors";
+import { apiNotConfiguredError, validationError } from "./errors";
 import type { Session } from "./types";
 
 export type InstitutionType =
@@ -46,8 +56,11 @@ export interface InstitutionVerification {
   method: VerificationMethod;
   emailStatus: EmailVerificationStatus;
   emailCode?: string;
-  domainDetected?: boolean;
   manualNote?: string;
+  signupSessionId?: string;
+  emailMasked?: string;
+  resendAfterSeconds?: number;
+  expiresInSeconds?: number;
 }
 
 export interface InstitutionSignupDraft {
@@ -82,6 +95,10 @@ interface PersistedInstitutionVerification {
   method: VerificationMethod;
   emailStatus: EmailVerificationStatus;
   domainDetected?: boolean;
+  signupSessionId?: string;
+  emailMasked?: string;
+  resendAfterSeconds?: number;
+  expiresInSeconds?: number;
 }
 
 interface PersistedInstitutionSignupDraft {
@@ -226,6 +243,56 @@ function clearVolatileSignupState() {
   volatileVerificationDraft = null;
 }
 
+function persistDraft(draft: InstitutionSignupDraft): InstitutionSignupDraft {
+  const next = { ...draft, updatedAt: new Date().toISOString() };
+  safeWrite(DRAFT_KEY, toPersistedDraft(next));
+  return next;
+}
+
+function buildApplication(
+  draft: InstitutionSignupDraft,
+  status: WorkspaceApplicationStatus,
+): WorkspaceApplication {
+  const {
+    password: _password,
+    confirmPassword: _confirmPassword,
+    ...administrator
+  } = draft.administrator;
+
+  return {
+    id: `app_${Date.now()}`,
+    status,
+    submittedAt: new Date().toISOString(),
+    institution: draft.institution,
+    administrator,
+    verification: {
+      ...draft.verification,
+      emailCode: undefined,
+      manualNote: volatileVerificationDraft?.manualNote,
+    },
+  };
+}
+
+async function resolveAccessTokenForOnboarding(draft: InstitutionSignupDraft) {
+  const stored = getStoredInstitutionAuthTokens();
+  if (stored) {
+    if (new Date(stored.expiresAt).getTime() <= Date.now()) {
+      const refreshed = await refreshInstitutionUserSession(stored.refreshToken);
+      return refreshed.accessToken;
+    }
+
+    return stored.accessToken;
+  }
+
+  if (!draft.verification.signupSessionId || draft.verification.emailStatus !== "verified") {
+    throw validationError("Verify the administrator work email before continuing.");
+  }
+
+  const tokens = await completeOrganizationStaffSignup(draft.verification.signupSessionId);
+  storeInstitutionAuthTokens(tokens);
+  return tokens.accessToken;
+}
+
 export function getInstitutionSignupDraft(): InstitutionSignupDraft | null {
   return hydrateDraft(safeRead<PersistedInstitutionSignupDraft>(DRAFT_KEY));
 }
@@ -237,12 +304,6 @@ export function createInstitutionSignupDraft(): InstitutionSignupDraft {
   const draft = emptyDraft();
   safeWrite(DRAFT_KEY, toPersistedDraft(draft));
   return draft;
-}
-
-function persistDraft(draft: InstitutionSignupDraft): InstitutionSignupDraft {
-  const next = { ...draft, updatedAt: new Date().toISOString() };
-  safeWrite(DRAFT_KEY, toPersistedDraft(next));
-  return next;
 }
 
 export function updateInstitutionDetails(
@@ -306,76 +367,156 @@ export async function requestInstitutionEmailVerification(): Promise<{
   ok: true;
   sentTo: string;
 }> {
-  if (!institutionAppConfig.demoMode) {
+  if (institutionAppConfig.demoMode) {
+    const current = getInstitutionSignupDraft() ?? emptyDraft();
+    const next = persistDraft({
+      ...current,
+      verification: {
+        ...current.verification,
+        method: "email",
+        emailStatus: "code_sent",
+      },
+    });
+
+    return { ok: true, sentTo: next.institution.verificationEmail };
+  }
+
+  if (!institutionAppConfig.backendConfigured) {
     throw apiNotConfiguredError("Institution signup email verification");
   }
 
   const current = getInstitutionSignupDraft() ?? emptyDraft();
-  const next = persistDraft({
+  if (
+    !current.administrator.fullName.trim() ||
+    !current.administrator.workEmail.trim() ||
+    !current.administrator.password.trim()
+  ) {
+    throw validationError(
+      "Return to the administrator step and complete the required details before verifying the work email.",
+    );
+  }
+
+  let signupSessionId = current.verification.signupSessionId;
+  let emailMasked = current.verification.emailMasked ?? current.administrator.workEmail;
+
+  if (!signupSessionId) {
+    const started = await startOrganizationStaffSignup({
+      fullName: current.administrator.fullName,
+      workEmail: current.administrator.workEmail,
+      password: current.administrator.password,
+    });
+    signupSessionId = started.signupSessionId;
+    emailMasked = started.emailMasked;
+  }
+
+  const sent = await sendOrganizationStaffSignupEmail(signupSessionId);
+
+  persistDraft({
     ...current,
     verification: {
       ...current.verification,
       method: "email",
-      emailStatus: "code_sent",
+      emailStatus: sent.emailVerified ? "verified" : "code_sent",
+      signupSessionId: sent.signupSessionId,
+      emailMasked: sent.emailMasked || emailMasked,
+      resendAfterSeconds: sent.resendAfterSeconds,
+      expiresInSeconds: sent.expiresInSeconds,
     },
   });
 
-  return { ok: true, sentTo: next.institution.verificationEmail };
+  return {
+    ok: true,
+    sentTo: sent.emailMasked || emailMasked,
+  };
 }
 
 export async function verifyInstitutionEmailCode(
   code: string,
 ): Promise<{ ok: boolean; status: EmailVerificationStatus }> {
-  if (!institutionAppConfig.demoMode) {
+  if (institutionAppConfig.demoMode) {
+    const current = getInstitutionSignupDraft() ?? emptyDraft();
+    const ok = /^\d{6}$/.test(code.trim());
+    const status: EmailVerificationStatus = ok ? "verified" : "failed";
+    persistDraft({
+      ...current,
+      verification: {
+        ...current.verification,
+        emailStatus: status,
+        emailCode: code,
+      },
+    });
+
+    return { ok, status };
+  }
+
+  if (!institutionAppConfig.backendConfigured) {
     throw apiNotConfiguredError("Institution signup email verification");
   }
 
   const current = getInstitutionSignupDraft() ?? emptyDraft();
-  const ok = /^\d{6}$/.test(code.trim());
-  const status: EmailVerificationStatus = ok ? "verified" : "failed";
+  if (!current.verification.signupSessionId) {
+    throw validationError("Send a verification code before attempting to verify it.");
+  }
+
+  const verified = await verifyOrganizationStaffSignupEmail(
+    current.verification.signupSessionId,
+    code.trim(),
+  );
+  const status: EmailVerificationStatus = verified.emailVerified ? "verified" : "failed";
+
   persistDraft({
     ...current,
     verification: {
       ...current.verification,
       emailStatus: status,
-      emailCode: code,
+      emailCode: code.trim(),
     },
   });
 
-  return { ok, status };
+  return { ok: verified.emailVerified, status };
 }
 
 export async function submitInstitutionWorkspaceApplication(): Promise<WorkspaceApplication> {
-  if (!institutionAppConfig.demoMode) {
+  const draft = getInstitutionSignupDraft() ?? emptyDraft();
+
+  if (institutionAppConfig.demoMode) {
+    const status: WorkspaceApplicationStatus =
+      draft.verification.method === "email" && draft.verification.emailStatus === "verified"
+        ? "verification_pending"
+        : draft.verification.method === "manual" || draft.verification.method === "domain"
+          ? "verification_pending"
+          : "email_verification_required";
+
+    const application = buildApplication(draft, status);
+    safeWrite(APPLICATION_KEY, application);
+
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+
+    clearVolatileSignupState();
+    return application;
+  }
+
+  if (!institutionAppConfig.backendConfigured) {
     throw apiNotConfiguredError("Institution workspace signup");
   }
 
-  const draft = getInstitutionSignupDraft() ?? emptyDraft();
-  const {
-    password: _password,
-    confirmPassword: _confirmPassword,
-    ...administrator
-  } = draft.administrator;
-  const status: WorkspaceApplicationStatus =
-    draft.verification.method === "email" && draft.verification.emailStatus === "verified"
-      ? "verification_pending"
-      : draft.verification.method === "manual" || draft.verification.method === "domain"
-        ? "verification_pending"
-        : "email_verification_required";
+  const accessToken = await resolveAccessTokenForOnboarding(draft);
+  await completeInstitutionWorkspaceOnboarding(accessToken, {
+    name: draft.institution.name,
+    website: draft.institution.website || undefined,
+    location:
+      [draft.institution.city, draft.institution.country].filter(Boolean).join(", ") || undefined,
+    workEmail: draft.institution.verificationEmail || draft.administrator.workEmail || undefined,
+    domain: draft.institution.domain || undefined,
+  });
 
-  const application: WorkspaceApplication = {
-    id: `app_${Date.now()}`,
-    status,
-    submittedAt: new Date().toISOString(),
-    institution: draft.institution,
-    administrator,
-    verification: {
-      ...draft.verification,
-      emailCode: undefined,
-      manualNote: volatileVerificationDraft?.manualNote,
-    },
-  };
-
+  const application = buildApplication(draft, "verification_pending");
   safeWrite(APPLICATION_KEY, application);
 
   if (typeof window !== "undefined") {

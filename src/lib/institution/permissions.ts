@@ -48,9 +48,29 @@ const rolePermissions: Record<Role, InstitutionPermissions> = {
     canManageOwnerActions: false,
     canAssignOwnerRole: false,
   },
+  member: {
+    canViewVerificationRequests: true,
+    canRespondToVerificationRequests: true,
+    canViewPeople: true,
+    canManageTeam: false,
+    canManageSettings: false,
+    canManageOwnerActions: false,
+    canAssignOwnerRole: false,
+  },
 };
 
 export function getInstitutionPermissions(session: Session | null | undefined) {
   if (!session) return noPermissions;
+  if (session.permissionFlags) {
+    return {
+      canViewVerificationRequests: session.permissionFlags.modifyVerification,
+      canRespondToVerificationRequests: session.permissionFlags.modifyVerification,
+      canViewPeople: session.permissionFlags.modifyPerson,
+      canManageTeam: session.permissionFlags.manageTeam,
+      canManageSettings: session.permissionFlags.saveSettings,
+      canManageOwnerActions: session.permissionFlags.transferOwnership,
+      canAssignOwnerRole: session.permissionFlags.transferOwnership,
+    };
+  }
   return rolePermissions[session.role];
 }

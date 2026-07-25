@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { InstitutionAuthProvider, useInstitutionAuth } from "@/lib/institution/auth";
+import { ServiceUnavailableState } from "@/components/institution/PageStates";
 import { WorkspaceShell } from "@/components/institution/WorkspaceShell";
 
 export const Route = createFileRoute("/institution")({
@@ -34,7 +35,7 @@ function InstitutionLayout() {
 function InstitutionLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, hydrated } = useInstitutionAuth();
+  const { session, hydrated, authenticated, bootstrap, error } = useInstitutionAuth();
 
   const path = location.pathname;
   const isPublic =
@@ -47,17 +48,41 @@ function InstitutionLayoutInner() {
   useEffect(() => {
     if (!hydrated) return;
     if (isPublic) return;
-    if (!session) {
+    if (!authenticated) {
       navigate({
         to: "/institution/login",
         search: { redirect: path },
         replace: true,
       });
+      return;
     }
-  }, [hydrated, session, isPublic, path, navigate]);
+    if (!session && bootstrap?.state === "no_org") {
+      navigate({
+        to: "/institution/signup/institution",
+        replace: true,
+      });
+    }
+  }, [authenticated, bootstrap?.state, hydrated, isPublic, navigate, path, session]);
 
   if (isPublic) return <Outlet />;
-  if (!hydrated || !session) {
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading workspace…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <ServiceUnavailableState
+          title="Institution workspace unavailable"
+          description={error.uiMessage}
+        />
+      </div>
+    );
+  }
+  if (!authenticated || !session) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
         Loading workspace…

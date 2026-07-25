@@ -38,7 +38,6 @@ function VerifyStep() {
   const navigate = useNavigate();
   const [method, setMethod] = useState<VerificationMethod>("email");
   const [emailStatus, setEmailStatus] = useState<EmailVerificationStatus>("not_started");
-  const [verificationEmail, setVerificationEmail] = useState("");
   const [institutionDomain, setInstitutionDomain] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [code, setCode] = useState("");
@@ -55,7 +54,6 @@ function VerifyStep() {
     }
     setMethod(draft.verification.method);
     setEmailStatus(draft.verification.emailStatus);
-    setVerificationEmail(draft.institution.verificationEmail);
     setInstitutionDomain(draft.institution.domain);
     setAdminEmail(draft.administrator.workEmail);
     setNote(draft.verification.manualNote ?? "");
@@ -67,6 +65,7 @@ function VerifyStep() {
     extractDomain(adminEmail) === institutionDomain.trim().toLowerCase();
 
   const chooseMethod = (m: VerificationMethod) => {
+    if (!institutionAppConfig.demoMode && m !== "email") return;
     setMethod(m);
     updateInstitutionVerification({ method: m });
   };
@@ -111,13 +110,12 @@ function VerifyStep() {
     <SignupShell
       step="verify"
       title="Verify your institution"
-      description="Kairo verifies each institution before activating full authority to issue or revoke credentials. Choose the option that fits you best."
+      description="Verify the administrator work email to create the institution workspace. Institution approval and advanced verification controls continue separately after onboarding."
     >
-      {!institutionAppConfig.demoMode && (
+      {!institutionAppConfig.demoMode && !institutionAppConfig.backendConfigured && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Institution verification is not connected to approved backend APIs yet. You can review the
-          flow here, but production verification stays unavailable until the institution onboarding
-          contract is implemented.
+          Institution signup is unavailable until the shared backend API base URL is configured for
+          this workspace.
         </div>
       )}
       <div className="space-y-3">
@@ -126,26 +124,26 @@ function VerifyStep() {
           onSelect={() => chooseMethod("email")}
           Icon={Mail}
           title="Official email verification"
-          body="Send a verification code to the institution domain email."
+          body="Send a verification code to the primary administrator's work email."
         >
           {method === "email" && (
             <div className="mt-4 space-y-3">
               <div>
-                <Label>Institution email</Label>
-                <Input value={verificationEmail} disabled className="mt-1" />
+                <Label>Administrator work email</Label>
+                <Input value={adminEmail} disabled className="mt-1" />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  We'll send a 6-digit code to this address.
+                  We'll send a 6-digit code to this address to finish creating the account.
                 </p>
               </div>
               {emailStatus === "not_started" && (
-                <Button type="button" onClick={sendCode} disabled={sending || !verificationEmail}>
+                <Button type="button" onClick={sendCode} disabled={sending || !adminEmail}>
                   {sending ? "Sending…" : "Send verification code"}
                 </Button>
               )}
               {(emailStatus === "code_sent" || emailStatus === "failed") && (
                 <div className="space-y-2">
                   <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
-                    Verification email sent. Enter any 6-digit code to simulate verification.
+                    Verification email sent. Enter the 6-digit code from your email to continue.
                   </div>
                   <div className="flex items-center gap-2">
                     <Input
@@ -189,6 +187,7 @@ function VerifyStep() {
           Icon={Globe}
           title="Domain verification"
           body="Verify ownership of your official domain later from workspace settings."
+          disabled={!institutionAppConfig.demoMode}
         >
           {method === "domain" && (
             <div className="mt-4 space-y-2">
@@ -215,6 +214,12 @@ function VerifyStep() {
                   </>
                 )}
               </div>
+              {!institutionAppConfig.demoMode && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Domain verification is part of a later institution-specific milestone and is not
+                  active in this release.
+                </div>
+              )}
             </div>
           )}
         </MethodCard>
@@ -225,6 +230,7 @@ function VerifyStep() {
           Icon={ShieldCheck}
           title="Manual review"
           body="Submit your request for Kairo review. Useful when no institutional email is available."
+          disabled={!institutionAppConfig.demoMode}
         >
           {method === "manual" && (
             <div className="mt-4 space-y-2">
@@ -273,6 +279,7 @@ function MethodCard({
   title,
   body,
   children,
+  disabled = false,
 }: {
   selected: boolean;
   onSelect: () => void;
@@ -280,6 +287,7 @@ function MethodCard({
   title: string;
   body: string;
   children?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -290,7 +298,12 @@ function MethodCard({
           : "border-border hover:border-[color:var(--kairo-navy-deep)]/40",
       )}
     >
-      <button type="button" className="flex w-full items-start gap-3 text-left" onClick={onSelect}>
+      <button
+        type="button"
+        className="flex w-full items-start gap-3 text-left disabled:cursor-not-allowed"
+        onClick={onSelect}
+        disabled={disabled}
+      >
         <span className="grid h-9 w-9 place-items-center rounded-lg bg-[color:var(--kairo-teal-soft)] text-[color:var(--kairo-navy-deep)]">
           <Icon className="h-4 w-4" />
         </span>

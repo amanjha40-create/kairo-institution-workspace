@@ -17,11 +17,26 @@ export type TrustStatus = "institution_verified" | "pending" | "disputed" | "rev
 
 export type PassportStatus = "connected" | "not_connected" | "sharing_limited";
 
-export type Role = "owner" | "admin" | "reviewer";
+export type Role = "owner" | "admin" | "reviewer" | "member";
 
 export type AccountStatus = "active" | "invited" | "pending_review" | "suspended";
 
 export type InstitutionWorkspaceStatus = "pending_review" | "active" | "suspended" | "inactive";
+
+export type WorkspaceAccessState =
+  | "ready"
+  | "no_org"
+  | "invitation_pending"
+  | "setup_incomplete"
+  | "verification_pending"
+  | "org_suspended"
+  | "membership_suspended";
+
+export type OrganizationVerificationState =
+  | "setup_incomplete"
+  | "verification_pending"
+  | "verified"
+  | "additional_information_required";
 
 export interface CandidateClaim {
   candidateName: string;
@@ -208,9 +223,48 @@ export interface MagicLinkRequest {
   };
 }
 
+export interface InstitutionPermissionFlags {
+  inviteCandidate: boolean;
+  modifyPerson: boolean;
+  modifyInvitation: boolean;
+  modifyVerification: boolean;
+  manageTeam: boolean;
+  saveSettings: boolean;
+  transferOwnership: boolean;
+}
+
+export interface InstitutionWorkspaceBootstrap {
+  state: WorkspaceAccessState;
+  currentUser: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    role: string;
+    activeOrganizationPublicId: string | null;
+  };
+  activeOrganization: {
+    publicId: string;
+    name: string;
+    organizationType: string;
+    website: string | null;
+    location: string | null;
+    workEmail: string | null;
+    domain: string | null;
+    verificationState: OrganizationVerificationState | null;
+    setupCompletedAt: string | null;
+    suspendedAt: string | null;
+  } | null;
+  membershipRole: Role | null;
+  organizationVerificationState: OrganizationVerificationState | null;
+  organizationSuspended: boolean;
+  membershipSuspended: boolean;
+  setupCompleted: boolean;
+  permissionFlags: InstitutionPermissionFlags;
+}
+
 export interface Session {
   userId: string;
-  membershipId: string;
+  membershipId?: string;
   institutionId: string;
   name: string;
   email: string;
@@ -219,4 +273,7 @@ export interface Session {
   accountStatus: AccountStatus;
   workspaceStatus: InstitutionWorkspaceStatus;
   expiresAt?: string;
+  permissionFlags?: InstitutionPermissionFlags;
+  workspaceAccessState?: WorkspaceAccessState;
+  organizationVerificationState?: OrganizationVerificationState | null;
 }

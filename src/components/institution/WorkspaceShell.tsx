@@ -17,6 +17,7 @@ const roleLabels: Record<string, string> = {
   owner: "Owner",
   admin: "Admin",
   reviewer: "Reviewer",
+  member: "Member",
 };
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {

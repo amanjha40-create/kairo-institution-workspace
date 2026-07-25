@@ -36,8 +36,8 @@ const schema = z
     jobTitle: z.string().trim().min(2, "Job title is required").max(120),
     workEmail: z.string().trim().email("Enter a valid work email").max(200),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
-    password: z.string().min(8, "Password must be at least 8 characters").max(200),
-    confirmPassword: z.string().min(8, "Confirm your password").max(200),
+    password: z.string().min(12, "Password must be at least 12 characters").max(200),
+    confirmPassword: z.string().min(12, "Confirm your password").max(200),
     authorized: z.literal(true, {
       errorMap: () => ({ message: "You must confirm your authority" }),
     }),
@@ -92,7 +92,7 @@ function AdminStep() {
     <SignupShell
       step="admin"
       title="Administrator details"
-      description="The primary administrator can invite other reviewers later from the workspace."
+      description="The primary administrator signs in with their work email. Phone verification is not required for this flow."
     >
       <form onSubmit={onSubmit} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">

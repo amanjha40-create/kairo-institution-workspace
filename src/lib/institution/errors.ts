@@ -60,6 +60,15 @@ export function unauthorizedError() {
   });
 }
 
+export function validationError(message: string) {
+  return new InstitutionError({
+    code: "VALIDATION",
+    message,
+    uiMessage: message,
+    status: 422,
+  });
+}
+
 export function forbiddenError(message = "You do not have permission for this action.") {
   return new InstitutionError({
     code: "FORBIDDEN",

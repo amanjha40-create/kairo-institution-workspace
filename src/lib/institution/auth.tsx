@@ -1,25 +1,41 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session } from "./types";
+import {
+  completeInstitutionPasswordReset,
+  getInstitutionWorkspaceBootstrap,
+  getStoredInstitutionAuthTokens,
+  loginInstitutionUser,
+  logoutInstitutionUser,
+  refreshInstitutionUserSession,
+  requestInstitutionPasswordReset,
+  storeInstitutionAuthTokens,
+} from "./backend";
 import { institutionAppConfig } from "./config";
-import { apiNotConfiguredError, invalidCredentialsError, serviceUnavailableError } from "./errors";
+import { apiNotConfiguredError, invalidCredentialsError, type InstitutionError } from "./errors";
 import { mockInstitution, mockTeam } from "./mock-data";
+import type { InstitutionWorkspaceBootstrap, Session } from "./types";
 
 const DEMO_SESSION_KEY = "kairo.institution.demo.session";
 
+export interface InstitutionAuthState {
+  session: Session | null;
+  bootstrap: InstitutionWorkspaceBootstrap | null;
+  authenticated: boolean;
+  error: InstitutionError | null;
+}
+
 export interface InstitutionAuthAdapter {
-  signIn: (email: string, password: string) => Promise<Session>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  getCurrentInstitutionSession: () => Promise<Session | null>;
-  refreshSession: () => Promise<Session | null>;
+  getCurrentInstitutionSession: () => Promise<InstitutionAuthState>;
+  refreshSession: () => Promise<InstitutionAuthState>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordReset: (token: string, password: string) => Promise<void>;
 }
 
-interface AuthContextValue {
-  session: Session | null;
+interface AuthContextValue extends InstitutionAuthState {
   hydrated: boolean;
   isDemoMode: boolean;
-  signIn: (email: string, password: string) => Promise<Session>;
+  signIn: (email: string, password: string) => Promise<Session | null>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<Session | null>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -78,6 +94,119 @@ function buildDemoSession(email: string): Session {
   };
 }
 
+function mapBootstrapToSession(
+  bootstrap: InstitutionWorkspaceBootstrap,
+  expiresAt?: string,
+): Session | null {
+  const organization = bootstrap.activeOrganization;
+  if (
+    !organization ||
+    organization.organizationType !== "university" ||
+    !bootstrap.membershipRole
+  ) {
+    return null;
+  }
+
+  const workspaceStatus =
+    bootstrap.organizationSuspended || bootstrap.membershipSuspended
+      ? "suspended"
+      : bootstrap.state === "ready"
+        ? "active"
+        : bootstrap.state === "setup_incomplete" || bootstrap.state === "verification_pending"
+          ? "pending_review"
+          : "inactive";
+
+  return {
+    userId: bootstrap.currentUser.id,
+    institutionId: organization.publicId,
+    name: bootstrap.currentUser.fullName || bootstrap.currentUser.email,
+    email: bootstrap.currentUser.email,
+    role: bootstrap.membershipRole,
+    institutionName: organization.name,
+    accountStatus: bootstrap.membershipSuspended ? "suspended" : "active",
+    workspaceStatus,
+    expiresAt,
+    permissionFlags: bootstrap.permissionFlags,
+    workspaceAccessState: bootstrap.state,
+    organizationVerificationState: bootstrap.organizationVerificationState,
+  };
+}
+
+async function resolveProductionAuthState(forceRefresh = false): Promise<InstitutionAuthState> {
+  if (!institutionAppConfig.backendConfigured) {
+    return {
+      session: null,
+      bootstrap: null,
+      authenticated: false,
+      error: null,
+    };
+  }
+
+  const stored = getStoredInstitutionAuthTokens();
+  if (!stored) {
+    return {
+      session: null,
+      bootstrap: null,
+      authenticated: false,
+      error: null,
+    };
+  }
+
+  let nextTokens = stored;
+
+  if (forceRefresh || new Date(stored.expiresAt).getTime() <= Date.now()) {
+    try {
+      nextTokens = await refreshInstitutionUserSession(stored.refreshToken);
+    } catch (error) {
+      storeInstitutionAuthTokens(null);
+      return {
+        session: null,
+        bootstrap: null,
+        authenticated: false,
+        error: null,
+      };
+    }
+  }
+
+  try {
+    const bootstrap = await getInstitutionWorkspaceBootstrap(nextTokens.accessToken);
+    return {
+      session: mapBootstrapToSession(bootstrap, nextTokens.expiresAt),
+      bootstrap,
+      authenticated: true,
+      error: null,
+    };
+  } catch (error) {
+    if (error instanceof Error && "status" in error && (error as InstitutionError).status === 401) {
+      try {
+        nextTokens = await refreshInstitutionUserSession(nextTokens.refreshToken);
+        const bootstrap = await getInstitutionWorkspaceBootstrap(nextTokens.accessToken);
+        return {
+          session: mapBootstrapToSession(bootstrap, nextTokens.expiresAt),
+          bootstrap,
+          authenticated: true,
+          error: null,
+        };
+      } catch {
+        storeInstitutionAuthTokens(null);
+        return {
+          session: null,
+          bootstrap: null,
+          authenticated: false,
+          error: null,
+        };
+      }
+    }
+
+    return {
+      session: null,
+      bootstrap: null,
+      authenticated: true,
+      error: error as InstitutionError,
+    };
+  }
+}
+
 function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
   if (institutionAppConfig.demoMode) {
     return {
@@ -88,22 +217,39 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
 
         const session = buildDemoSession(email);
         safeWriteDemoSession(session);
-        return session;
       },
       async signOut() {
         safeWriteDemoSession(null);
       },
       async getCurrentInstitutionSession() {
         const session = safeReadDemoSession();
-        if (!session) return null;
+        if (!session) {
+          return {
+            session: null,
+            bootstrap: null,
+            authenticated: false,
+            error: null,
+          };
+        }
         if (session.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
           safeWriteDemoSession(null);
-          return null;
+          return {
+            session: null,
+            bootstrap: null,
+            authenticated: false,
+            error: null,
+          };
         }
-        return session;
+
+        return {
+          session,
+          bootstrap: null,
+          authenticated: true,
+          error: null,
+        };
       },
       async refreshSession() {
-        return safeReadDemoSession();
+        return this.getCurrentInstitutionSession();
       },
       async requestPasswordReset(email: string) {
         const memberExists = mockTeam.some(
@@ -114,54 +260,59 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
         }
       },
       async completePasswordReset() {
-        throw serviceUnavailableError(
-          "Demo mode does not persist password resets.",
-          "Demo mode cannot complete password resets.",
-        );
+        throw apiNotConfiguredError("Password reset");
       },
     };
   }
 
   return {
-    async signIn() {
-      throw apiNotConfiguredError("Institution sign in");
+    async signIn(email: string, password: string) {
+      await loginInstitutionUser(email, password);
     },
-    async signOut() {},
+    async signOut() {
+      const stored = getStoredInstitutionAuthTokens();
+      try {
+        if (stored?.refreshToken) {
+          await logoutInstitutionUser(stored.refreshToken);
+        }
+      } finally {
+        storeInstitutionAuthTokens(null);
+      }
+    },
     async getCurrentInstitutionSession() {
-      return null;
+      return resolveProductionAuthState(false);
     },
     async refreshSession() {
-      if (!institutionAppConfig.backendConfigured) return null;
-      throw serviceUnavailableError(
-        "Institution session refresh is not connected yet.",
-        "Institution session refresh is not available yet.",
-      );
+      return resolveProductionAuthState(true);
     },
-    async requestPasswordReset() {
-      throw apiNotConfiguredError("Password reset");
+    async requestPasswordReset(email: string) {
+      await requestInstitutionPasswordReset(email);
     },
-    async completePasswordReset() {
-      throw apiNotConfiguredError("Password reset");
+    async completePasswordReset(token: string, password: string) {
+      await completeInstitutionPasswordReset(token, password);
     },
   };
 }
 
 export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [bootstrap, setBootstrap] = useState<InstitutionWorkspaceBootstrap | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState<InstitutionError | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const adapter = useMemo(() => getInstitutionAuthAdapter(), []);
 
   useEffect(() => {
     let cancelled = false;
 
-    void adapter
-      .getCurrentInstitutionSession()
-      .then((nextSession) => {
-        if (!cancelled) setSession(nextSession);
-      })
-      .finally(() => {
-        if (!cancelled) setHydrated(true);
-      });
+    void adapter.getCurrentInstitutionSession().then((state) => {
+      if (cancelled) return;
+      setSession(state.session);
+      setBootstrap(state.bootstrap);
+      setAuthenticated(state.authenticated);
+      setAuthError(state.error);
+      setHydrated(true);
+    });
 
     return () => {
       cancelled = true;
@@ -169,26 +320,39 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
   }, [adapter]);
 
   const signIn = async (email: string, password: string) => {
-    const next = await adapter.signIn(email, password);
-    setSession(next);
-    return next;
+    await adapter.signIn(email, password);
+    const state = await adapter.getCurrentInstitutionSession();
+    setSession(state.session);
+    setBootstrap(state.bootstrap);
+    setAuthenticated(state.authenticated);
+    setAuthError(state.error);
+    return state.session;
   };
 
   const signOut = async () => {
     await adapter.signOut();
     setSession(null);
+    setBootstrap(null);
+    setAuthenticated(false);
+    setAuthError(null);
   };
 
   const refreshSession = async () => {
-    const next = await adapter.refreshSession();
-    setSession(next);
-    return next;
+    const state = await adapter.refreshSession();
+    setSession(state.session);
+    setBootstrap(state.bootstrap);
+    setAuthenticated(state.authenticated);
+    setAuthError(state.error);
+    return state.session;
   };
 
   return (
     <AuthContext.Provider
       value={{
         session,
+        bootstrap,
+        authenticated,
+        error: authError,
         hydrated,
         isDemoMode: institutionAppConfig.demoMode,
         signIn,
