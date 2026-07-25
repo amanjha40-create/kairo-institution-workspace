@@ -13,6 +13,21 @@ const verificationLabels: Record<VerificationStatus, string> = {
   confirmed: "Confirmed",
   discrepancy: "Discrepancy Reported",
   closed: "Closed",
+  draft: "Draft",
+  pending_subject_acceptance: "Waiting for Candidate",
+  accepted: "Accepted",
+  pending_subject_submission: "Waiting for Evidence",
+  pending_admin_review: "Pending Admin Review",
+  awaiting_subject_corrections: "Awaiting Candidate Corrections",
+  pending_admin_re_review: "Pending Admin Re-review",
+  approved_for_organization_verification: "Approved for Verification",
+  pending_organization_resolution: "Pending Institution Resolution",
+  pending_organization_acceptance: "Awaiting Institution Acceptance",
+  awaiting_information: "Awaiting Information",
+  verified: "Verified",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
+  expired: "Expired",
 };
 
 const verificationTones: Record<VerificationStatus, string> = {
@@ -22,6 +37,21 @@ const verificationTones: Record<VerificationStatus, string> = {
   confirmed: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   discrepancy: "bg-rose-50 text-rose-800 ring-rose-200",
   closed: "bg-slate-100 text-slate-700 ring-slate-200",
+  draft: "bg-slate-100 text-slate-700 ring-slate-200",
+  pending_subject_acceptance: "bg-amber-50 text-amber-800 ring-amber-200",
+  accepted: "bg-amber-50 text-amber-800 ring-amber-200",
+  pending_subject_submission: "bg-amber-50 text-amber-800 ring-amber-200",
+  pending_admin_review: "bg-sky-50 text-sky-800 ring-sky-200",
+  awaiting_subject_corrections: "bg-violet-50 text-violet-800 ring-violet-200",
+  pending_admin_re_review: "bg-sky-50 text-sky-800 ring-sky-200",
+  approved_for_organization_verification: "bg-sky-50 text-sky-800 ring-sky-200",
+  pending_organization_resolution: "bg-sky-50 text-sky-800 ring-sky-200",
+  pending_organization_acceptance: "bg-amber-50 text-amber-800 ring-amber-200",
+  awaiting_information: "bg-violet-50 text-violet-800 ring-violet-200",
+  verified: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  rejected: "bg-rose-50 text-rose-800 ring-rose-200",
+  cancelled: "bg-slate-100 text-slate-700 ring-slate-200",
+  expired: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
 export function VerificationStatusBadge({ status }: { status: VerificationStatus }) {

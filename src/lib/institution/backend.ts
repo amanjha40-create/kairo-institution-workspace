@@ -11,10 +11,22 @@ import {
 } from "./errors";
 import type {
   InstitutionTeam,
+  InternalNote,
   InstitutionWorkspaceBootstrap,
+  TimelineEvent,
   TeamInvitation,
   TeamMember,
+  VerificationRequest,
+  VerificationStatus,
 } from "./types";
+import {
+  buildCandidateClaimFromTrustContext,
+  formatVerificationTimelineLabel,
+  getVerificationNextAction,
+  getVerificationOriginLabel,
+  getVerificationReference,
+  getVerificationRequestTypeLabel,
+} from "./verification";
 
 const AUTH_STORAGE_KEY = "kairo.institution.auth.tokens";
 
@@ -104,6 +116,84 @@ interface BackendOrganizationInvitationResponse {
   updated_at: string;
 }
 
+interface BackendVerificationReviewerResponse {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  role: string;
+}
+
+interface BackendVerificationRequestResponse {
+  public_id: string;
+  employment_id: string | null;
+  origin_type: VerificationRequest["originType"] | null;
+  organization_public_id: string | null;
+  trust_invitation_public_id: string | null;
+  subject_name: string;
+  subject_email: string;
+  target_organization_name: string | null;
+  target_organization_email: string | null;
+  request_type: VerificationRequest["requestType"];
+  status: VerificationStatus;
+  due_date: string | null;
+  trust_context: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  candidate_response: string | null;
+  candidate_response_submitted_at: string | null;
+  accepted_at: string | null;
+  consented_fields: string[];
+  consented_evidence_scope: string[];
+  target_organization_metadata: Record<string, unknown>;
+  assigned_reviewer: BackendVerificationReviewerResponse | null;
+  review_status: string | null;
+  is_assigned_to_current_user: boolean | null;
+  organization_internal_note: string | null;
+  evidence_summary: {
+    total_items: number;
+    document_items: number;
+    field_keys: string[];
+  };
+}
+
+interface BackendVerificationEvidenceResponse {
+  public_id: string;
+  evidence_type: string;
+  field_key: string;
+  document_id: string | null;
+  employment_document_id: string | null;
+  value: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  document_type: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  upload_status: string | null;
+  download_url: string | null;
+  download_url_expires_in_seconds: number | null;
+}
+
+interface BackendVerificationTimelineEventResponse {
+  public_id: string;
+  event_type: string;
+  event_source: string;
+  previous_status: string | null;
+  new_status: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+interface BackendVerificationTimelineResponse {
+  verification_request_public_id: string;
+  items: BackendVerificationTimelineEventResponse[];
+}
+
+interface BackendPageResponse<T> {
+  items: T[];
+}
+
 interface ApiRequestOptions extends RequestInit {
   invalidCredentials?: boolean;
   unauthorizedUiMessage?: string;
@@ -159,6 +249,15 @@ export interface UpdateOrganizationMemberRoleInput {
 
 export interface SuspendOrganizationMemberInput {
   reason?: string;
+}
+
+export interface AssignVerificationReviewerInput {
+  organizationMemberPublicId?: string;
+}
+
+export interface VerificationRequestActionInput {
+  note?: string;
+  metadata?: Record<string, unknown>;
 }
 
 function getApiBaseUrl(feature: string) {
@@ -320,6 +419,112 @@ function mapOrganizationInvitation(payload: BackendOrganizationInvitationRespons
     declinedAt: payload.declined_at,
     cancelledAt: payload.cancelled_at,
   };
+}
+
+function unwrapListResponse<T>(payload: T[] | BackendPageResponse<T>) {
+  return Array.isArray(payload) ? payload : payload.items;
+}
+
+function mapVerificationRequest(payload: BackendVerificationRequestResponse): VerificationRequest {
+  const claim = buildCandidateClaimFromTrustContext({
+    trustContext: payload.trust_context,
+    candidateName: payload.subject_name,
+    institutionName: payload.target_organization_name || undefined,
+    requestType: payload.request_type,
+    candidateResponse: payload.candidate_response,
+    consentedFields: payload.consented_fields,
+  });
+
+  return {
+    id: payload.public_id,
+    reference: getVerificationReference(payload.public_id),
+    candidateName: payload.subject_name,
+    candidateId: payload.public_id,
+    candidateEmail: payload.subject_email,
+    requestedBy: getVerificationOriginLabel(payload.origin_type),
+    requestPurpose: `${getVerificationRequestTypeLabel(payload.request_type)} verification request`,
+    status: payload.status,
+    receivedAt: payload.created_at,
+    dueAt: payload.due_date || undefined,
+    assignedTo: payload.assigned_reviewer?.full_name || payload.assigned_reviewer?.email,
+    nextAction: getVerificationNextAction(payload.status),
+    consentReceived: Boolean(payload.accepted_at),
+    claim,
+    institutionRecord: { found: false },
+    matchStatus: "record_unavailable",
+    evidence: [],
+    internalNotes: [],
+    timeline: [],
+    source: "backend",
+    originType: payload.origin_type || undefined,
+    requestType: payload.request_type,
+    organizationInternalNote: payload.organization_internal_note,
+    assignedReviewer: payload.assigned_reviewer
+      ? {
+          userId: payload.assigned_reviewer.user_id,
+          fullName: payload.assigned_reviewer.full_name,
+          email: payload.assigned_reviewer.email,
+          role: payload.assigned_reviewer.role,
+        }
+      : null,
+    consentedFields: payload.consented_fields,
+    consentedEvidenceScope: payload.consented_evidence_scope,
+    candidateResponse: payload.candidate_response,
+    candidateResponseSubmittedAt: payload.candidate_response_submitted_at,
+    trustContext: payload.trust_context,
+    evidenceSummary: {
+      totalItems: payload.evidence_summary.total_items,
+      documentItems: payload.evidence_summary.document_items,
+      fieldKeys: payload.evidence_summary.field_keys,
+    },
+    isAssignedToCurrentUser: payload.is_assigned_to_current_user,
+  };
+}
+
+function mapVerificationEvidence(payload: BackendVerificationEvidenceResponse) {
+  return {
+    id: payload.public_id,
+    name: payload.original_filename || payload.field_key,
+    type: payload.document_type || payload.evidence_type,
+    uploadedBy: "Request subject",
+    uploadedAt: payload.created_at,
+    url: payload.download_url || undefined,
+  };
+}
+
+function mapVerificationTimelineEvent(
+  payload: BackendVerificationTimelineEventResponse,
+): TimelineEvent {
+  const metadataDetail =
+    typeof payload.metadata.note === "string"
+      ? payload.metadata.note
+      : typeof payload.metadata.assignee_email === "string"
+        ? payload.metadata.assignee_email
+        : Array.isArray(payload.metadata.fields)
+          ? payload.metadata.fields.join(", ")
+          : undefined;
+
+  return {
+    id: payload.public_id,
+    at: payload.created_at,
+    label: formatVerificationTimelineLabel(payload.event_type),
+    detail: metadataDetail,
+  };
+}
+
+function mapInternalNote(payload: BackendVerificationRequestResponse): InternalNote[] {
+  if (!payload.organization_internal_note?.trim()) {
+    return [];
+  }
+
+  return [
+    {
+      id: `${payload.public_id}:internal-note`,
+      author: payload.assigned_reviewer?.full_name || "Institution team",
+      createdAt: payload.updated_at,
+      body: payload.organization_internal_note,
+    },
+  ];
 }
 
 function toStoredTokens(payload: BackendTokenResponse): StoredInstitutionAuthTokens {
@@ -751,5 +956,175 @@ export async function transferInstitutionOrganizationOwnership(
       },
       accessToken,
     );
+  });
+}
+
+export async function getInstitutionOrganizationVerificationRequests(orgPublicId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<
+      BackendVerificationRequestResponse[] | BackendPageResponse<BackendVerificationRequestResponse>
+    >(
+      `/api/v1/organizations/${orgPublicId}/verification-requests`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return unwrapListResponse(payload).map(mapVerificationRequest);
+  });
+}
+
+export async function getInstitutionVerificationRequestDetail(requestPublicId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return {
+      ...mapVerificationRequest(payload),
+      internalNotes: mapInternalNote(payload),
+    };
+  });
+}
+
+export async function getInstitutionVerificationEvidence(requestPublicId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<
+      | BackendVerificationEvidenceResponse[]
+      | BackendPageResponse<BackendVerificationEvidenceResponse>
+    >(
+      `/api/v1/verification-requests/${requestPublicId}/evidence`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return unwrapListResponse(payload).map(mapVerificationEvidence);
+  });
+}
+
+export async function getInstitutionVerificationTimeline(requestPublicId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationTimelineResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/timeline`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return payload.items.map(mapVerificationTimelineEvent);
+  });
+}
+
+export async function assignInstitutionVerificationReviewer(
+  requestPublicId: string,
+  input: AssignVerificationReviewerInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/reviewer`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          organization_member_public_id: input.organizationMemberPublicId || null,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapVerificationRequest(payload);
+  });
+}
+
+export async function updateInstitutionVerificationInternalNote(
+  requestPublicId: string,
+  note: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/internal-note`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          note: note.trim() || null,
+        }),
+      },
+      accessToken,
+    );
+
+    return {
+      ...mapVerificationRequest(payload),
+      internalNotes: mapInternalNote(payload),
+    };
+  });
+}
+
+export async function requestInstitutionVerificationInformation(
+  requestPublicId: string,
+  input: VerificationRequestActionInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/request-information`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          note: input.note?.trim() || null,
+          metadata: input.metadata || {},
+        }),
+      },
+      accessToken,
+    );
+
+    return mapVerificationRequest(payload);
+  });
+}
+
+export async function verifyInstitutionVerificationRequest(
+  requestPublicId: string,
+  input: VerificationRequestActionInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          note: input.note?.trim() || null,
+          metadata: input.metadata || {},
+        }),
+      },
+      accessToken,
+    );
+
+    return mapVerificationRequest(payload);
+  });
+}
+
+export async function rejectInstitutionVerificationRequest(
+  requestPublicId: string,
+  input: VerificationRequestActionInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendVerificationRequestResponse>(
+      `/api/v1/verification-requests/${requestPublicId}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          note: input.note?.trim() || null,
+          metadata: input.metadata || {},
+        }),
+      },
+      accessToken,
+    );
+
+    return mapVerificationRequest(payload);
   });
 }

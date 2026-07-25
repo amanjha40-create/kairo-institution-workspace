@@ -1,14 +1,23 @@
 import { institutionAppConfig } from "./config";
 import {
+  assignInstitutionVerificationReviewer,
   cancelInstitutionOrganizationInvitation,
   createInstitutionOrganizationInvitation,
+  getInstitutionOrganizationVerificationRequests as fetchInstitutionOrganizationVerificationRequests,
   getInstitutionOrganizationTeam,
+  getInstitutionVerificationEvidence,
+  getInstitutionVerificationRequestDetail,
+  getInstitutionVerificationTimeline,
   removeInstitutionOrganizationMember,
+  rejectInstitutionVerificationRequest,
   resendInstitutionOrganizationInvitation,
   restoreInstitutionOrganizationMember,
   suspendInstitutionOrganizationMember,
   transferInstitutionOrganizationOwnership,
+  updateInstitutionVerificationInternalNote,
   updateInstitutionOrganizationMemberRole,
+  verifyInstitutionVerificationRequest,
+  requestInstitutionVerificationInformation,
 } from "./backend";
 import {
   apiNotConfiguredError,
@@ -20,19 +29,24 @@ import {
 } from "./errors";
 import { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } from "./mock-data";
 import type {
+  EvidenceFile,
   InstitutionTeam,
   InstitutionSettings,
+  InternalNote,
   MagicLinkRequest,
   Person,
   TeamInvitation,
   TeamMember,
+  TimelineEvent,
   VerificationRequest,
   VerificationStatus,
 } from "./types";
 
 interface InstitutionRepository {
-  getVerificationRequests: () => Promise<VerificationRequest[]>;
+  getVerificationRequests: (organizationId: string) => Promise<VerificationRequest[]>;
   getVerificationRequest: (id: string) => Promise<VerificationRequest | undefined>;
+  getVerificationEvidence: (id: string) => Promise<EvidenceFile[]>;
+  getVerificationTimeline: (id: string) => Promise<TimelineEvent[]>;
   respondToVerification: (
     id: string,
     action: "confirm" | "discrepancy",
@@ -46,6 +60,10 @@ interface InstitutionRepository {
     id: string,
     author: string,
     body: string,
+  ) => Promise<VerificationRequest | undefined>;
+  assignVerificationReviewer: (
+    requestId: string,
+    organizationMemberId?: string,
   ) => Promise<VerificationRequest | undefined>;
   getPeople: () => Promise<Person[]>;
   getPerson: (id: string) => Promise<Person | undefined>;
@@ -193,6 +211,22 @@ function demoInstitutionRepository(): InstitutionRepository {
     async getVerificationRequest(id) {
       return delay(cloneFixture(requests.find((request) => request.id === id)));
     },
+    async getVerificationEvidence(id) {
+      const request = requests.find((candidate) => candidate.id === id);
+      if (!request) {
+        throw notFoundError("This verification request could not be found.");
+      }
+
+      return delay(cloneFixture(request.evidence));
+    },
+    async getVerificationTimeline(id) {
+      const request = requests.find((candidate) => candidate.id === id);
+      if (!request) {
+        throw notFoundError("This verification request could not be found.");
+      }
+
+      return delay(cloneFixture(request.timeline));
+    },
     async respondToVerification(id, action, payload) {
       const { idx } = assertMutableRequest(id);
       const now = new Date().toISOString();
@@ -250,6 +284,35 @@ function demoInstitutionRepository(): InstitutionRepository {
             author,
             body,
             createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+
+      return delay(cloneFixture(requests[idx]));
+    },
+    async assignVerificationReviewer(requestId, organizationMemberId) {
+      const idx = findRequestIndex(requestId);
+      if (idx === -1) {
+        throw notFoundError("This verification request could not be found.");
+      }
+
+      const assignee = team.find(
+        (candidate) =>
+          candidate.id === organizationMemberId &&
+          candidate.status === "active" &&
+          candidate.role !== "member",
+      );
+
+      requests[idx] = {
+        ...requests[idx],
+        assignedTo: assignee?.name,
+        timeline: [
+          ...requests[idx].timeline,
+          {
+            id: `timeline_${Date.now()}`,
+            at: new Date().toISOString(),
+            label: "Reviewer assigned",
+            detail: assignee?.name ?? "Assignment cleared",
           },
         ],
       };
@@ -423,6 +486,12 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getVerificationRequest() {
       assertInstitutionBackend("Verification requests");
     },
+    async getVerificationEvidence() {
+      assertInstitutionBackend("Verification evidence");
+    },
+    async getVerificationTimeline() {
+      assertInstitutionBackend("Verification timeline");
+    },
     async respondToVerification() {
       assertInstitutionBackend("Verification responses");
     },
@@ -431,6 +500,9 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     },
     async addInternalNote() {
       assertInstitutionBackend("Internal verification notes");
+    },
+    async assignVerificationReviewer() {
+      assertInstitutionBackend("Verification reviewer assignment");
     },
     async getPeople() {
       assertInstitutionBackend("Institution people");
@@ -476,6 +548,48 @@ function backendInstitutionRepository(): InstitutionRepository {
 
   return {
     ...unavailable,
+    async getVerificationRequests(organizationId) {
+      return fetchInstitutionOrganizationVerificationRequests(organizationId);
+    },
+    async getVerificationRequest(id) {
+      return getInstitutionVerificationRequestDetail(id);
+    },
+    async getVerificationEvidence(id) {
+      return getInstitutionVerificationEvidence(id);
+    },
+    async getVerificationTimeline(id) {
+      return getInstitutionVerificationTimeline(id);
+    },
+    async respondToVerification(id, action, payload) {
+      if (action === "confirm") {
+        return verifyInstitutionVerificationRequest(id, {
+          note: payload.note,
+          metadata: payload.fields?.length ? { fields: payload.fields } : undefined,
+        });
+      }
+
+      return rejectInstitutionVerificationRequest(id, {
+        note: payload.reason,
+        metadata: payload.fields?.length ? { fields: payload.fields } : undefined,
+      });
+    },
+    async requestClarification(id, payload) {
+      return requestInstitutionVerificationInformation(id, {
+        note: payload.message,
+        metadata: {
+          fields: payload.fields,
+          request_document: payload.requestDocument ?? false,
+        },
+      });
+    },
+    async addInternalNote(id, _author, body) {
+      return updateInstitutionVerificationInternalNote(id, body);
+    },
+    async assignVerificationReviewer(requestId, organizationMemberId) {
+      return assignInstitutionVerificationReviewer(requestId, {
+        organizationMemberPublicId: organizationMemberId,
+      });
+    },
     async getTeam(organizationId) {
       return getInstitutionOrganizationTeam(organizationId);
     },
@@ -575,8 +689,10 @@ const publicVerificationRepository = institutionAppConfig.demoMode
   ? demoPublicVerificationRepository()
   : unavailablePublicVerificationRepository();
 
-export async function getInstitutionVerificationRequests(): Promise<VerificationRequest[]> {
-  return institutionRepository.getVerificationRequests();
+export async function getInstitutionVerificationRequests(
+  organizationId: string,
+): Promise<VerificationRequest[]> {
+  return institutionRepository.getVerificationRequests(organizationId);
 }
 
 export async function getInstitutionVerificationRequest(
@@ -590,7 +706,6 @@ export async function respondToInstitutionVerification(
   action: "confirm" | "discrepancy",
   payload: { fields?: string[]; note?: string; reason?: string },
 ): Promise<VerificationRequest | undefined> {
-  assertDemoMode("Verification responses");
   return institutionRepository.respondToVerification(id, action, payload);
 }
 
@@ -598,7 +713,6 @@ export async function requestInstitutionClarification(
   id: string,
   payload: { fields: string[]; message: string; requestDocument?: boolean },
 ): Promise<VerificationRequest | undefined> {
-  assertDemoMode("Verification responses");
   return institutionRepository.requestClarification(id, payload);
 }
 
@@ -607,8 +721,30 @@ export async function addInternalNote(
   author: string,
   body: string,
 ): Promise<VerificationRequest | undefined> {
-  assertDemoMode("Internal verification notes");
   return institutionRepository.addInternalNote(id, author, body);
+}
+
+export async function getInstitutionOrganizationVerificationRequests(
+  organizationId: string,
+): Promise<VerificationRequest[]> {
+  return institutionRepository.getVerificationRequests(organizationId);
+}
+
+export async function getInstitutionVerificationEvidenceItems(id: string): Promise<EvidenceFile[]> {
+  return institutionRepository.getVerificationEvidence(id);
+}
+
+export async function getInstitutionVerificationTimelineItems(
+  id: string,
+): Promise<TimelineEvent[]> {
+  return institutionRepository.getVerificationTimeline(id);
+}
+
+export async function assignInstitutionVerificationRequestReviewer(
+  requestId: string,
+  organizationMemberId?: string,
+): Promise<VerificationRequest | undefined> {
+  return institutionRepository.assignVerificationReviewer(requestId, organizationMemberId);
 }
 
 export async function getInstitutionPeople(): Promise<Person[]> {

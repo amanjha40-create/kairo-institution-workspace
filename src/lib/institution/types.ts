@@ -2,7 +2,47 @@
 // BACKEND-INTEGRATION: these mirror the shapes we expect Kairo's backend to return.
 
 export type VerificationStatus =
-  "pending" | "in_progress" | "awaiting_clarification" | "confirmed" | "discrepancy" | "closed";
+  | "pending"
+  | "in_progress"
+  | "awaiting_clarification"
+  | "confirmed"
+  | "discrepancy"
+  | "closed"
+  | "draft"
+  | "pending_subject_acceptance"
+  | "accepted"
+  | "pending_subject_submission"
+  | "pending_admin_review"
+  | "awaiting_subject_corrections"
+  | "pending_admin_re_review"
+  | "approved_for_organization_verification"
+  | "pending_organization_resolution"
+  | "pending_organization_acceptance"
+  | "awaiting_information"
+  | "verified"
+  | "rejected"
+  | "cancelled"
+  | "expired";
+
+export type VerificationRequestType =
+  | "employment"
+  | "education"
+  | "identity"
+  | "document"
+  | "license"
+  | "medical"
+  | "reference"
+  | "platform"
+  | "certification"
+  | "custom";
+
+export type VerificationOriginType =
+  | "trust_invitation"
+  | "subject_initiated"
+  | "organization_created"
+  | "admin_created"
+  | "api"
+  | "system";
 
 export type MatchStatus = "exact" | "partial" | "no_match" | "record_unavailable";
 
@@ -79,11 +119,25 @@ export interface TimelineEvent {
   detail?: string;
 }
 
+export interface VerificationReviewer {
+  userId: string;
+  fullName?: string | null;
+  email: string;
+  role: string;
+}
+
+export interface VerificationEvidenceSummary {
+  totalItems: number;
+  documentItems: number;
+  fieldKeys: string[];
+}
+
 export interface VerificationRequest {
   id: string;
   reference: string;
   candidateName: string;
   candidateId: string;
+  candidateEmail?: string;
   requestedBy: string;
   requestPurpose: string;
   requestingContact?: string;
@@ -100,6 +154,18 @@ export interface VerificationRequest {
   evidence: EvidenceFile[];
   internalNotes: InternalNote[];
   timeline: TimelineEvent[];
+  source?: "demo" | "backend";
+  originType?: VerificationOriginType;
+  requestType?: VerificationRequestType;
+  organizationInternalNote?: string | null;
+  assignedReviewer?: VerificationReviewer | null;
+  consentedFields?: string[];
+  consentedEvidenceScope?: string[];
+  candidateResponse?: string | null;
+  candidateResponseSubmittedAt?: string | null;
+  trustContext?: Record<string, unknown>;
+  evidenceSummary?: VerificationEvidenceSummary;
+  isAssignedToCurrentUser?: boolean | null;
 }
 
 export interface SharedProfessionalProfile {
