@@ -119,6 +119,10 @@ export function buildCandidateClaimFromTrustContext(args: {
   candidateResponse?: string | null;
   consentedFields?: string[];
 }) {
+  // Temporary backend-contract limitation:
+  // the shared verification-request payload does not yet expose a typed education claim,
+  // so Institution Milestone 3 derives the display claim from trust_context until the
+  // institution-specific claim contract is added server-side.
   const {
     trustContext,
     candidateName,
