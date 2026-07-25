@@ -2,10 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  cancelTeamInvitation,
   getInstitutionTeam,
   inviteTeamMember,
   removeTeamMember,
-  updateTeamMember,
+  resendTeamInvitation,
+  restoreTeamMember,
+  suspendTeamMember,
+  transferTeamOwnership,
+  updateTeamMemberRole,
 } from "@/lib/institution/api";
 import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
@@ -28,13 +33,14 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { toast } from "sonner";
-import type { Role, TeamMember } from "@/lib/institution/types";
+import type { Role, TeamInvitation, TeamMember } from "@/lib/institution/types";
 import { formatDateTime } from "@/lib/institution/format";
 
 export const Route = createFileRoute("/institution/team")({
@@ -43,19 +49,34 @@ export const Route = createFileRoute("/institution/team")({
 
 function TeamPage() {
   const qc = useQueryClient();
-  const { session } = useInstitutionAuth();
+  const { session, refreshSession } = useInstitutionAuth();
   const permissions = getInstitutionPermissions(session);
+  const organizationId = session?.institutionId;
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: institutionQueryKeys.team(),
-    queryFn: getInstitutionTeam,
+    queryKey: institutionQueryKeys.team(organizationId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+      return getInstitutionTeam(organizationId);
+    },
+    enabled: Boolean(organizationId),
   });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<Role>("reviewer");
+  const [inviteRole, setInviteRole] = useState<TeamInvitation["role"]>("reviewer");
+  const [transferTarget, setTransferTarget] = useState<TeamMember | null>(null);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: institutionQueryKeys.team() });
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: institutionQueryKeys.team(organizationId) });
 
-  const activeOwners = (data ?? []).filter((m) => m.role === "owner" && m.status === "active");
+  const members = data?.members ?? [];
+  const invitations = data?.invitations ?? [];
+  const pendingInvitations = invitations.filter((invitation) => invitation.status === "pending");
+  const invitationHistory = invitations.filter((invitation) => invitation.status !== "pending");
+  const activeOwners = members.filter(
+    (member) => member.role === "owner" && member.status === "active",
+  );
 
   if (!permissions.canManageTeam) return <PermissionDeniedState />;
   if (isError && isInstitutionError(error) && error.status === 503) {
@@ -99,48 +120,161 @@ function TeamPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {(data ?? []).map((m) => (
-                <TeamRow
-                  key={m.id}
-                  member={m}
-                  canManage={permissions.canManageTeam}
-                  canManageOwnerActions={permissions.canManageOwnerActions}
-                  canAssignOwnerRole={permissions.canAssignOwnerRole}
-                  isLastOwner={m.role === "owner" && activeOwners.length <= 1}
-                  onUpdate={async (patch) => {
-                    try {
-                      await updateTeamMember(m.id, patch);
-                      invalidate();
-                      toast.success("Updated");
-                    } catch (err) {
-                      toast.error(getInstitutionErrorMessage(err));
-                    }
-                  }}
-                  onRemove={async () => {
-                    try {
-                      await removeTeamMember(m.id);
-                      invalidate();
-                      toast.success("Member removed");
-                    } catch (err) {
-                      toast.error(getInstitutionErrorMessage(err));
-                    }
-                  }}
-                  onResend={() => toast("Invitation resend is a demo-only preview.")}
-                  onCancelInvite={async () => {
-                    try {
-                      await removeTeamMember(m.id);
-                      invalidate();
-                      toast.success("Invitation cancelled");
-                    } catch (err) {
-                      toast.error(getInstitutionErrorMessage(err));
-                    }
-                  }}
-                />
-              ))}
+              {members.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={6}>
+                    No team members found for this institution.
+                  </td>
+                </tr>
+              ) : (
+                members.map((m) => (
+                  <TeamRow
+                    key={m.id}
+                    member={m}
+                    currentUserEmail={session?.email ?? null}
+                    canManage={permissions.canManageTeam}
+                    canManageOwnerActions={permissions.canManageOwnerActions}
+                    isLastOwner={m.role === "owner" && activeOwners.length <= 1}
+                    onRoleChange={async (role) => {
+                      if (!organizationId) return;
+                      try {
+                        await updateTeamMemberRole(organizationId, m.id, role);
+                        invalidate();
+                        toast.success("Role updated");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                    onSuspend={async () => {
+                      if (!organizationId) return;
+                      try {
+                        await suspendTeamMember(organizationId, m.id);
+                        invalidate();
+                        toast.success("Member suspended");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                    onRestore={async () => {
+                      if (!organizationId) return;
+                      try {
+                        await restoreTeamMember(organizationId, m.id);
+                        invalidate();
+                        toast.success("Member restored");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                    onRemove={async () => {
+                      if (!organizationId) return;
+                      try {
+                        await removeTeamMember(organizationId, m.id);
+                        invalidate();
+                        toast.success("Member removed");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                    onTransferOwnership={() => setTransferTarget(m)}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
       )}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Pending invitations</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Invitations awaiting acceptance remain scoped to this institution workspace.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Email</th>
+                <th className="px-4 py-2 font-medium">Role</th>
+                <th className="px-4 py-2 font-medium">Invited</th>
+                <th className="px-4 py-2 font-medium">Expires</th>
+                <th className="px-4 py-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pendingInvitations.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={5}>
+                    No pending invitations.
+                  </td>
+                </tr>
+              ) : (
+                pendingInvitations.map((invitation) => (
+                  <InvitationRow
+                    key={invitation.id}
+                    invitation={invitation}
+                    onResend={async () => {
+                      if (!organizationId) return;
+                      try {
+                        await resendTeamInvitation(organizationId, invitation.id);
+                        invalidate();
+                        toast.success("Invitation resent");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                    onCancel={async () => {
+                      if (!organizationId) return;
+                      try {
+                        await cancelTeamInvitation(organizationId, invitation.id);
+                        invalidate();
+                        toast.success("Invitation cancelled");
+                      } catch (err) {
+                        toast.error(getInstitutionErrorMessage(err));
+                      }
+                    }}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Invitation history</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Recent accepted, declined, cancelled, and expired invitations.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Email</th>
+                <th className="px-4 py-2 font-medium">Role</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {invitationHistory.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-sm text-muted-foreground" colSpan={4}>
+                    No invitation history yet.
+                  </td>
+                </tr>
+              ) : (
+                invitationHistory.map((invitation) => (
+                  <InvitationHistoryRow key={invitation.id} invitation={invitation} />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
@@ -158,14 +292,16 @@ function TeamPage() {
             </div>
             <div>
               <Label>Role</Label>
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+              <Select
+                value={inviteRole}
+                onValueChange={(value) => setInviteRole(value as TeamInvitation["role"])}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="reviewer">Reviewer</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  {permissions.canAssignOwnerRole && <SelectItem value="owner">Owner</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -177,10 +313,12 @@ function TeamPage() {
             <Button
               disabled={!inviteEmail.includes("@")}
               onClick={async () => {
+                if (!organizationId) return;
                 try {
-                  await inviteTeamMember(inviteEmail, inviteRole);
+                  await inviteTeamMember(organizationId, inviteEmail, inviteRole);
                   setInviteOpen(false);
                   setInviteEmail("");
+                  setInviteRole("reviewer");
                   invalidate();
                   toast.success("Invitation sent");
                 } catch (err) {
@@ -193,48 +331,99 @@ function TeamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={Boolean(transferTarget)}
+        onOpenChange={(open) => !open && setTransferTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer ownership</DialogTitle>
+            <DialogDescription>
+              This transfers the active Owner role to another current team member. The current Owner
+              becomes an Admin after the transfer completes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-border bg-secondary/30 px-4 py-3 text-sm">
+            {transferTarget ? (
+              <>
+                <p className="font-medium">{transferTarget.name}</p>
+                <p className="text-muted-foreground">{transferTarget.email}</p>
+              </>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!organizationId || !transferTarget) return;
+                try {
+                  await transferTeamOwnership(organizationId, transferTarget.id);
+                  await refreshSession();
+                  setTransferTarget(null);
+                  invalidate();
+                  toast.success("Ownership transferred");
+                } catch (err) {
+                  toast.error(getInstitutionErrorMessage(err));
+                }
+              }}
+            >
+              Confirm transfer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function TeamRow({
   member,
+  currentUserEmail,
   canManage,
   canManageOwnerActions,
-  canAssignOwnerRole,
   isLastOwner,
-  onUpdate,
+  onRoleChange,
+  onSuspend,
+  onRestore,
   onRemove,
-  onResend,
-  onCancelInvite,
+  onTransferOwnership,
 }: {
   member: TeamMember;
+  currentUserEmail: string | null;
   canManage: boolean;
   canManageOwnerActions: boolean;
-  canAssignOwnerRole: boolean;
   isLastOwner: boolean;
-  onUpdate: (patch: Partial<TeamMember>) => void;
+  onRoleChange: (role: Exclude<Role, "owner">) => void;
+  onSuspend: () => void;
+  onRestore: () => void;
   onRemove: () => void;
-  onResend: () => void;
-  onCancelInvite: () => void;
+  onTransferOwnership: () => void;
 }) {
   const protectedMember =
     (isLastOwner && member.role === "owner" && member.status === "active") ||
     (!canManageOwnerActions && member.role === "owner");
+  const currentUser = currentUserEmail?.toLowerCase() === member.email.toLowerCase();
+  const disableRoleSelect = protectedMember || currentUser || member.role === "owner";
+  const disableLifecycleActions = protectedMember || currentUser;
   return (
     <tr className="hover:bg-secondary/40">
       <td className="px-4 py-3 font-medium">{member.name}</td>
       <td className="px-4 py-3 text-muted-foreground">{member.email}</td>
       <td className="px-4 py-3">
-        {canManage && !protectedMember ? (
-          <Select value={member.role} onValueChange={(v) => onUpdate({ role: v as Role })}>
+        {canManage && !disableRoleSelect ? (
+          <Select
+            value={member.role}
+            onValueChange={(value) => onRoleChange(value as Exclude<Role, "owner">)}
+          >
             <SelectTrigger className="w-[130px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="reviewer">Reviewer</SelectItem>
               <SelectItem value="admin">Admin</SelectItem>
-              {canAssignOwnerRole && <SelectItem value="owner">Owner</SelectItem>}
             </SelectContent>
           </Select>
         ) : (
@@ -260,36 +449,87 @@ function TeamRow({
       <td className="px-4 py-3 text-right">
         {canManage ? (
           <div className="inline-flex flex-wrap justify-end gap-1">
-            {member.status === "pending" ? (
-              <>
-                <Button size="sm" variant="outline" onClick={onResend}>
-                  Resend
-                </Button>
-                <Button size="sm" variant="ghost" onClick={onCancelInvite}>
-                  Cancel
-                </Button>
-              </>
-            ) : member.status === "suspended" ? (
-              <Button size="sm" variant="outline" onClick={() => onUpdate({ status: "active" })}>
+            {member.status === "suspended" ? (
+              <Button size="sm" variant="outline" disabled={currentUser} onClick={onRestore}>
                 Restore
               </Button>
             ) : (
               <Button
                 size="sm"
                 variant="outline"
-                disabled={protectedMember}
-                onClick={() => onUpdate({ status: "suspended" })}
+                disabled={disableLifecycleActions}
+                onClick={onSuspend}
               >
                 Suspend
               </Button>
             )}
-            <Button size="sm" variant="ghost" disabled={protectedMember} onClick={onRemove}>
+            {canManageOwnerActions && member.status === "active" && member.role !== "owner" && (
+              <Button size="sm" variant="ghost" onClick={onTransferOwnership}>
+                Transfer ownership
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" disabled={disableLifecycleActions} onClick={onRemove}>
               Remove
             </Button>
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
+      </td>
+    </tr>
+  );
+}
+
+function InvitationRow({
+  invitation,
+  onResend,
+  onCancel,
+}: {
+  invitation: TeamInvitation;
+  onResend: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <tr className="hover:bg-secondary/40">
+      <td className="px-4 py-3 text-muted-foreground">{invitation.email}</td>
+      <td className="px-4 py-3 capitalize">{invitation.role}</td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {formatDateTime(invitation.invitedAt)}
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {invitation.expiresAt ? formatDateTime(invitation.expiresAt) : "—"}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <div className="inline-flex flex-wrap justify-end gap-1">
+          <Button size="sm" variant="outline" onClick={onResend}>
+            Resend
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function InvitationHistoryRow({ invitation }: { invitation: TeamInvitation }) {
+  const updatedAt =
+    invitation.acceptedAt ||
+    invitation.declinedAt ||
+    invitation.cancelledAt ||
+    invitation.expiresAt ||
+    invitation.invitedAt;
+
+  return (
+    <tr className="hover:bg-secondary/40">
+      <td className="px-4 py-3 text-muted-foreground">{invitation.email}</td>
+      <td className="px-4 py-3 capitalize">{invitation.role}</td>
+      <td className="px-4 py-3">
+        <span className="capitalize">{invitation.status}</span>
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {updatedAt ? formatDateTime(updatedAt) : "—"}
       </td>
     </tr>
   );

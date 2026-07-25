@@ -24,8 +24,21 @@ describe("institution repositories and public verification flows", () => {
   it("protects the final active owner from removal", async () => {
     const api = await importApiModule("true");
 
-    await expect(api.removeTeamMember("u_priya")).rejects.toMatchObject({
+    await expect(api.removeTeamMember("inst_northbridge", "u_priya")).rejects.toMatchObject({
       code: "CONFLICT",
+    });
+  });
+
+  it("splits current members from pending invitations in demo mode", async () => {
+    const api = await importApiModule("true");
+
+    await expect(api.getInstitutionTeam("inst_northbridge")).resolves.toMatchObject({
+      members: expect.arrayContaining([
+        expect.objectContaining({ id: "u_priya", role: "owner", status: "active" }),
+      ]),
+      invitations: expect.arrayContaining([
+        expect.objectContaining({ id: "u_marcus", role: "reviewer", status: "pending" }),
+      ]),
     });
   });
 

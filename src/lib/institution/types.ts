@@ -2,12 +2,7 @@
 // BACKEND-INTEGRATION: these mirror the shapes we expect Kairo's backend to return.
 
 export type VerificationStatus =
-  | "pending"
-  | "in_progress"
-  | "awaiting_clarification"
-  | "confirmed"
-  | "discrepancy"
-  | "closed";
+  "pending" | "in_progress" | "awaiting_clarification" | "confirmed" | "discrepancy" | "closed";
 
 export type MatchStatus = "exact" | "partial" | "no_match" | "record_unavailable";
 
@@ -33,10 +28,7 @@ export type WorkspaceAccessState =
   | "membership_suspended";
 
 export type OrganizationVerificationState =
-  | "setup_incomplete"
-  | "verification_pending"
-  | "verified"
-  | "additional_information_required";
+  "setup_incomplete" | "verification_pending" | "verified" | "additional_information_required";
 
 export interface CandidateClaim {
   candidateName: string;
@@ -173,6 +165,28 @@ export interface TeamMember {
   role: Role;
   status: "active" | "pending" | "suspended";
   lastActive?: string;
+  suspendedReason?: string | null;
+}
+
+export type TeamInvitationStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
+
+export interface TeamInvitation {
+  id: string;
+  email: string;
+  role: Exclude<Role, "owner">;
+  status: TeamInvitationStatus;
+  invitedByEmail?: string | null;
+  invitedByName?: string | null;
+  invitedAt: string;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  declinedAt?: string | null;
+  cancelledAt?: string | null;
+}
+
+export interface InstitutionTeam {
+  members: TeamMember[];
+  invitations: TeamInvitation[];
 }
 
 export interface Institution {

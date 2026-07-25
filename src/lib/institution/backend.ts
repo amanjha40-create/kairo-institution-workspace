@@ -9,7 +9,12 @@ import {
   serviceUnavailableError,
   unauthorizedError,
 } from "./errors";
-import type { InstitutionWorkspaceBootstrap } from "./types";
+import type {
+  InstitutionTeam,
+  InstitutionWorkspaceBootstrap,
+  TeamInvitation,
+  TeamMember,
+} from "./types";
 
 const AUTH_STORAGE_KEY = "kairo.institution.auth.tokens";
 
@@ -69,6 +74,36 @@ interface BackendOrganizationResponse {
   name: string;
 }
 
+interface BackendOrganizationMemberResponse {
+  public_id: string;
+  organization_public_id: string;
+  role: TeamMember["role"];
+  user_email: string;
+  user_full_name: string | null;
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BackendOrganizationInvitationResponse {
+  public_id: string;
+  organization_public_id: string;
+  invitee_email: string;
+  invitee_user_id: string | null;
+  role: TeamInvitation["role"];
+  status: TeamInvitation["status"];
+  invited_by_email: string | null;
+  invited_by_full_name: string | null;
+  invited_at: string;
+  expires_at: string | null;
+  accepted_at: string | null;
+  declined_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ApiRequestOptions extends RequestInit {
   invalidCredentials?: boolean;
   unauthorizedUiMessage?: string;
@@ -111,6 +146,19 @@ export interface InstitutionOnboardingPayload {
   location?: string;
   workEmail?: string;
   domain?: string;
+}
+
+export interface CreateOrganizationInvitationInput {
+  inviteeEmail: string;
+  role: TeamInvitation["role"];
+}
+
+export interface UpdateOrganizationMemberRoleInput {
+  role: Exclude<TeamMember["role"], "owner">;
+}
+
+export interface SuspendOrganizationMemberInput {
+  reason?: string;
 }
 
 function getApiBaseUrl(feature: string) {
@@ -247,6 +295,33 @@ async function apiRequest<T>(
   return (await response.json()) as T;
 }
 
+function mapOrganizationMember(payload: BackendOrganizationMemberResponse): TeamMember {
+  return {
+    id: payload.public_id,
+    name: payload.user_full_name || payload.user_email,
+    email: payload.user_email,
+    role: payload.role,
+    status: payload.suspended_at ? "suspended" : "active",
+    suspendedReason: payload.suspension_reason,
+  };
+}
+
+function mapOrganizationInvitation(payload: BackendOrganizationInvitationResponse): TeamInvitation {
+  return {
+    id: payload.public_id,
+    email: payload.invitee_email,
+    role: payload.role,
+    status: payload.status,
+    invitedByEmail: payload.invited_by_email,
+    invitedByName: payload.invited_by_full_name,
+    invitedAt: payload.invited_at,
+    expiresAt: payload.expires_at,
+    acceptedAt: payload.accepted_at,
+    declinedAt: payload.declined_at,
+    cancelledAt: payload.cancelled_at,
+  };
+}
+
 function toStoredTokens(payload: BackendTokenResponse): StoredInstitutionAuthTokens {
   return {
     accessToken: payload.access_token,
@@ -305,6 +380,36 @@ export function getStoredInstitutionAuthTokens() {
 
 export function storeInstitutionAuthTokens(tokens: StoredInstitutionAuthTokens | null) {
   safeWriteAuthTokens(tokens);
+}
+
+async function getValidInstitutionTokens() {
+  const stored = getStoredInstitutionAuthTokens();
+  if (!stored) {
+    throw unauthorizedError();
+  }
+
+  if (new Date(stored.expiresAt).getTime() <= Date.now()) {
+    return refreshInstitutionUserSession(stored.refreshToken);
+  }
+
+  return stored;
+}
+
+async function withInstitutionAccessToken<T>(
+  execute: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  let tokens = await getValidInstitutionTokens();
+
+  try {
+    return await execute(tokens.accessToken);
+  } catch (error) {
+    if (!(error instanceof InstitutionError) || error.status !== 401) {
+      throw error;
+    }
+
+    tokens = await refreshInstitutionUserSession(tokens.refreshToken);
+    return execute(tokens.accessToken);
+  }
 }
 
 export async function loginInstitutionUser(email: string, password: string) {
@@ -481,4 +586,170 @@ export async function completeInstitutionWorkspaceOnboarding(
     publicId: response.public_id,
     name: response.name,
   };
+}
+
+export async function getInstitutionOrganizationTeam(
+  orgPublicId: string,
+): Promise<InstitutionTeam> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const [members, invitations] = await Promise.all([
+      apiRequest<BackendOrganizationMemberResponse[]>(
+        `/api/v1/organizations/${orgPublicId}/members`,
+        { method: "GET" },
+        accessToken,
+      ),
+      apiRequest<BackendOrganizationInvitationResponse[]>(
+        `/api/v1/organizations/${orgPublicId}/invitations`,
+        { method: "GET" },
+        accessToken,
+      ),
+    ]);
+
+    return {
+      members: members.map(mapOrganizationMember),
+      invitations: invitations.map(mapOrganizationInvitation),
+    };
+  });
+}
+
+export async function createInstitutionOrganizationInvitation(
+  orgPublicId: string,
+  input: CreateOrganizationInvitationInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationInvitationResponse>(
+      `/api/v1/organizations/${orgPublicId}/invitations`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          invitee_email: input.inviteeEmail,
+          role: input.role,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapOrganizationInvitation(payload);
+  });
+}
+
+export async function resendInstitutionOrganizationInvitation(
+  orgPublicId: string,
+  invitationPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationInvitationResponse>(
+      `/api/v1/organizations/${orgPublicId}/invitations/${invitationPublicId}/resend`,
+      {
+        method: "POST",
+      },
+      accessToken,
+    );
+
+    return mapOrganizationInvitation(payload);
+  });
+}
+
+export async function cancelInstitutionOrganizationInvitation(
+  orgPublicId: string,
+  invitationPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationInvitationResponse>(
+      `/api/v1/organizations/${orgPublicId}/invitations/${invitationPublicId}/cancel`,
+      {
+        method: "POST",
+      },
+      accessToken,
+    );
+
+    return mapOrganizationInvitation(payload);
+  });
+}
+
+export async function updateInstitutionOrganizationMemberRole(
+  orgPublicId: string,
+  memberPublicId: string,
+  input: UpdateOrganizationMemberRoleInput,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationMemberResponse>(
+      `/api/v1/organizations/${orgPublicId}/members/${memberPublicId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: input.role }),
+      },
+      accessToken,
+    );
+
+    return mapOrganizationMember(payload);
+  });
+}
+
+export async function suspendInstitutionOrganizationMember(
+  orgPublicId: string,
+  memberPublicId: string,
+  input: SuspendOrganizationMemberInput = {},
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationMemberResponse>(
+      `/api/v1/organizations/${orgPublicId}/members/${memberPublicId}/suspend`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          reason: input.reason?.trim() || null,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapOrganizationMember(payload);
+  });
+}
+
+export async function restoreInstitutionOrganizationMember(
+  orgPublicId: string,
+  memberPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationMemberResponse>(
+      `/api/v1/organizations/${orgPublicId}/members/${memberPublicId}/restore`,
+      {
+        method: "POST",
+      },
+      accessToken,
+    );
+
+    return mapOrganizationMember(payload);
+  });
+}
+
+export async function removeInstitutionOrganizationMember(
+  orgPublicId: string,
+  memberPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    await apiRequest<void>(
+      `/api/v1/organizations/${orgPublicId}/members/${memberPublicId}`,
+      {
+        method: "DELETE",
+      },
+      accessToken,
+    );
+  });
+}
+
+export async function transferInstitutionOrganizationOwnership(
+  orgPublicId: string,
+  memberPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    await apiRequest<void>(
+      `/api/v1/organizations/${orgPublicId}/members/${memberPublicId}/transfer-ownership`,
+      {
+        method: "POST",
+      },
+      accessToken,
+    );
+  });
 }

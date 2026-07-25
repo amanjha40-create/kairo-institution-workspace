@@ -1,15 +1,30 @@
 import { institutionAppConfig } from "./config";
 import {
+  cancelInstitutionOrganizationInvitation,
+  createInstitutionOrganizationInvitation,
+  getInstitutionOrganizationTeam,
+  removeInstitutionOrganizationMember,
+  resendInstitutionOrganizationInvitation,
+  restoreInstitutionOrganizationMember,
+  suspendInstitutionOrganizationMember,
+  transferInstitutionOrganizationOwnership,
+  updateInstitutionOrganizationMemberRole,
+} from "./backend";
+import {
   apiNotConfiguredError,
   conflictError,
+  forbiddenError,
   notFoundError,
   serviceUnavailableError,
+  unauthorizedError,
 } from "./errors";
 import { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } from "./mock-data";
 import type {
+  InstitutionTeam,
   InstitutionSettings,
   MagicLinkRequest,
   Person,
+  TeamInvitation,
   TeamMember,
   VerificationRequest,
   VerificationStatus,
@@ -34,11 +49,24 @@ interface InstitutionRepository {
   ) => Promise<VerificationRequest | undefined>;
   getPeople: () => Promise<Person[]>;
   getPerson: (id: string) => Promise<Person | undefined>;
-  getTeam: () => Promise<TeamMember[]>;
+  getTeam: (organizationId: string) => Promise<InstitutionTeam>;
   getSettings: () => Promise<InstitutionSettings>;
-  updateTeamMember: (id: string, patch: Partial<TeamMember>) => Promise<TeamMember | undefined>;
-  removeTeamMember: (id: string) => Promise<void>;
-  inviteTeamMember: (email: string, role: TeamMember["role"]) => Promise<TeamMember>;
+  inviteTeamMember: (
+    organizationId: string,
+    email: string,
+    role: TeamInvitation["role"],
+  ) => Promise<TeamInvitation>;
+  resendTeamInvitation: (organizationId: string, id: string) => Promise<TeamInvitation>;
+  cancelTeamInvitation: (organizationId: string, id: string) => Promise<TeamInvitation>;
+  updateTeamMemberRole: (
+    organizationId: string,
+    id: string,
+    role: Exclude<TeamMember["role"], "owner">,
+  ) => Promise<TeamMember | undefined>;
+  suspendTeamMember: (organizationId: string, id: string) => Promise<TeamMember | undefined>;
+  restoreTeamMember: (organizationId: string, id: string) => Promise<TeamMember | undefined>;
+  removeTeamMember: (organizationId: string, id: string) => Promise<void>;
+  transferTeamOwnership: (organizationId: string, id: string) => Promise<void>;
 }
 
 interface PublicVerificationRepository {
@@ -64,6 +92,49 @@ const people: Person[] = cloneFixture(mockPeople);
 let team: TeamMember[] = cloneFixture(mockTeam);
 const settings: InstitutionSettings = cloneFixture(mockSettings);
 const magicLinks = cloneFixture(mockMagicLinks);
+
+function getDemoTeamMembers() {
+  return team.filter((member) => member.status !== "pending");
+}
+
+function getDemoTeamInvitations(): TeamInvitation[] {
+  return team
+    .filter((member) => member.status === "pending")
+    .map((member) => ({
+      id: member.id,
+      email: member.email,
+      role: member.role === "owner" ? "reviewer" : member.role,
+      status: "pending" as const,
+      invitedByEmail: mockTeam[0]?.email ?? null,
+      invitedByName: mockTeam[0]?.name ?? null,
+      invitedAt: new Date("2026-07-20T09:00:00Z").toISOString(),
+      expiresAt: new Date("2026-07-27T09:00:00Z").toISOString(),
+      acceptedAt: null,
+      declinedAt: null,
+      cancelledAt: null,
+    }));
+}
+
+function assertTeamManageable() {
+  if (!institutionAppConfig.demoMode) {
+    throw unauthorizedError();
+  }
+}
+
+function assertProtectedTeamRole(role: TeamMember["role"]) {
+  if (role === "owner") {
+    throw forbiddenError("Owner changes must use the dedicated ownership transfer flow.");
+  }
+}
+
+function assertFinalOwnerStillActive(nextTeam: TeamMember[]) {
+  const activeOwners = nextTeam.filter(
+    (candidate) => candidate.role === "owner" && candidate.status === "active",
+  );
+  if (activeOwners.length === 0) {
+    throw conflictError("The final active Owner cannot be removed or suspended.");
+  }
+}
 
 function assertInstitutionBackend(feature: string): never {
   if (!institutionAppConfig.backendConfigured) {
@@ -192,57 +263,154 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(people.find((person) => person.id === id)));
     },
     async getTeam() {
-      return delay(cloneFixture(team));
+      return delay(
+        cloneFixture({
+          members: getDemoTeamMembers(),
+          invitations: getDemoTeamInvitations(),
+        }),
+      );
     },
     async getSettings() {
       return delay(cloneFixture(settings));
     },
-    async updateTeamMember(id, patch) {
+    async inviteTeamMember(_organizationId, email, role) {
+      assertTeamManageable();
+      const invitation: TeamMember = {
+        id: `invite_${Date.now()}`,
+        name: email.split("@")[0],
+        email,
+        role,
+        status: "pending",
+      };
+      team = [...team, invitation];
+      const createdInvitation = getDemoTeamInvitations().find(
+        (candidate) => candidate.id === invitation.id,
+      );
+      if (!createdInvitation) {
+        throw notFoundError("This invitation could not be created.");
+      }
+
+      return delay(cloneFixture(createdInvitation));
+    },
+    async resendTeamInvitation(_organizationId, id) {
+      const invitation = getDemoTeamInvitations().find((candidate) => candidate.id === id);
+      if (!invitation) {
+        throw notFoundError("This invitation could not be found.");
+      }
+
+      return delay(
+        cloneFixture({
+          ...invitation,
+          invitedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      );
+    },
+    async cancelTeamInvitation(_organizationId, id) {
+      const invitation = team.find(
+        (candidate) => candidate.id === id && candidate.status === "pending",
+      );
+      if (!invitation) {
+        throw notFoundError("This invitation could not be found.");
+      }
+
+      team = team.filter((candidate) => candidate.id !== id);
+      return delay(
+        cloneFixture({
+          id,
+          email: invitation.email,
+          role: invitation.role === "owner" ? "reviewer" : invitation.role,
+          status: "cancelled" as const,
+          invitedByEmail: mockTeam[0]?.email ?? null,
+          invitedByName: mockTeam[0]?.name ?? null,
+          invitedAt: new Date("2026-07-20T09:00:00Z").toISOString(),
+          expiresAt: new Date("2026-07-27T09:00:00Z").toISOString(),
+          acceptedAt: null,
+          declinedAt: null,
+          cancelledAt: new Date().toISOString(),
+        }),
+      );
+    },
+    async updateTeamMemberRole(_organizationId, id, role) {
+      const member = team.find((candidate) => candidate.id === id);
+      if (!member) {
+        throw notFoundError("This team member could not be found.");
+      }
+      assertProtectedTeamRole(role);
+      if (member.role === "owner") {
+        throw forbiddenError("Owner changes must use the dedicated ownership transfer flow.");
+      }
+
+      const nextTeam = team.map((candidate) =>
+        candidate.id === id ? { ...candidate, role } : candidate,
+      );
+
+      team = nextTeam;
+      return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
+    },
+    async suspendTeamMember(_organizationId, id) {
       const member = team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
 
       const nextTeam = team.map((candidate) =>
-        candidate.id === id ? { ...candidate, ...patch } : candidate,
+        candidate.id === id ? { ...candidate, status: "suspended" as const } : candidate,
       );
-      const activeOwners = nextTeam.filter(
-        (candidate) => candidate.role === "owner" && candidate.status === "active",
-      );
-      if (activeOwners.length === 0) {
-        throw conflictError("The final active Owner cannot be removed or suspended.");
-      }
-
+      assertFinalOwnerStillActive(nextTeam);
       team = nextTeam;
       return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
     },
-    async removeTeamMember(id) {
+    async restoreTeamMember(_organizationId, id) {
+      const member = team.find((candidate) => candidate.id === id);
+      if (!member) {
+        throw notFoundError("This team member could not be found.");
+      }
+
+      team = team.map((candidate) =>
+        candidate.id === id ? { ...candidate, status: "active" as const } : candidate,
+      );
+      return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
+    },
+    async removeTeamMember(_organizationId, id) {
       const member = team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
 
       const nextTeam = team.filter((candidate) => candidate.id !== id);
-      const activeOwners = nextTeam.filter(
-        (candidate) => candidate.role === "owner" && candidate.status === "active",
-      );
-      if (member.role === "owner" && member.status === "active" && activeOwners.length === 0) {
-        throw conflictError("The final active Owner cannot be removed or suspended.");
+      if (member.role === "owner" && member.status === "active") {
+        assertFinalOwnerStillActive(nextTeam);
       }
 
       team = nextTeam;
       return delay(undefined);
     },
-    async inviteTeamMember(email, role) {
-      const member: TeamMember = {
-        id: `member_${Date.now()}`,
-        name: email.split("@")[0],
-        email,
-        role,
-        status: "pending",
-      };
-      team = [...team, member];
-      return delay(cloneFixture(member));
+    async transferTeamOwnership(_organizationId, id) {
+      const target = team.find((candidate) => candidate.id === id);
+      if (!target) {
+        throw notFoundError("This team member could not be found.");
+      }
+      if (target.status !== "active") {
+        throw conflictError("Only active team members can receive ownership.");
+      }
+      if (target.role === "owner") {
+        return delay(undefined);
+      }
+
+      let ownerTransferred = false;
+      team = team.map((candidate) => {
+        if (candidate.role === "owner" && candidate.status === "active" && !ownerTransferred) {
+          ownerTransferred = true;
+          return { ...candidate, role: "admin" as const };
+        }
+        if (candidate.id === id) {
+          return { ...candidate, role: "owner" as const };
+        }
+        return candidate;
+      });
+
+      return delay(undefined);
     },
   };
 }
@@ -276,14 +444,67 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getSettings() {
       assertInstitutionBackend("Institution settings");
     },
-    async updateTeamMember() {
+    async inviteTeamMember() {
+      assertInstitutionBackend("Institution team management");
+    },
+    async resendTeamInvitation() {
+      assertInstitutionBackend("Institution team management");
+    },
+    async cancelTeamInvitation() {
+      assertInstitutionBackend("Institution team management");
+    },
+    async updateTeamMemberRole() {
+      assertInstitutionBackend("Institution team management");
+    },
+    async suspendTeamMember() {
+      assertInstitutionBackend("Institution team management");
+    },
+    async restoreTeamMember() {
       assertInstitutionBackend("Institution team management");
     },
     async removeTeamMember() {
       assertInstitutionBackend("Institution team management");
     },
-    async inviteTeamMember() {
+    async transferTeamOwnership() {
       assertInstitutionBackend("Institution team management");
+    },
+  };
+}
+
+function backendInstitutionRepository(): InstitutionRepository {
+  const unavailable = unavailableInstitutionRepository();
+
+  return {
+    ...unavailable,
+    async getTeam(organizationId) {
+      return getInstitutionOrganizationTeam(organizationId);
+    },
+    async inviteTeamMember(organizationId, email, role) {
+      return createInstitutionOrganizationInvitation(organizationId, {
+        inviteeEmail: email,
+        role,
+      });
+    },
+    async resendTeamInvitation(organizationId, id) {
+      return resendInstitutionOrganizationInvitation(organizationId, id);
+    },
+    async cancelTeamInvitation(organizationId, id) {
+      return cancelInstitutionOrganizationInvitation(organizationId, id);
+    },
+    async updateTeamMemberRole(organizationId, id, role) {
+      return updateInstitutionOrganizationMemberRole(organizationId, id, { role });
+    },
+    async suspendTeamMember(organizationId, id) {
+      return suspendInstitutionOrganizationMember(organizationId, id);
+    },
+    async restoreTeamMember(organizationId, id) {
+      return restoreInstitutionOrganizationMember(organizationId, id);
+    },
+    async removeTeamMember(organizationId, id) {
+      return removeInstitutionOrganizationMember(organizationId, id);
+    },
+    async transferTeamOwnership(organizationId, id) {
+      return transferInstitutionOrganizationOwnership(organizationId, id);
     },
   };
 }
@@ -349,7 +570,7 @@ function unavailablePublicVerificationRepository(): PublicVerificationRepository
 
 const institutionRepository = institutionAppConfig.demoMode
   ? demoInstitutionRepository()
-  : unavailableInstitutionRepository();
+  : backendInstitutionRepository();
 const publicVerificationRepository = institutionAppConfig.demoMode
   ? demoPublicVerificationRepository()
   : unavailablePublicVerificationRepository();
@@ -398,8 +619,8 @@ export async function getInstitutionPerson(id: string): Promise<Person | undefin
   return institutionRepository.getPerson(id);
 }
 
-export async function getInstitutionTeam(): Promise<TeamMember[]> {
-  return institutionRepository.getTeam();
+export async function getInstitutionTeam(organizationId: string): Promise<InstitutionTeam> {
+  return institutionRepository.getTeam(organizationId);
 }
 
 export async function getInstitutionSettings(): Promise<InstitutionSettings> {
@@ -436,20 +657,48 @@ export async function requestPublicInstitutionVerificationClarification(
   return publicVerificationRepository.requestClarification(token, payload);
 }
 
-export async function updateTeamMember(
+export async function updateTeamMemberRole(
+  organizationId: string,
   id: string,
-  patch: Partial<TeamMember>,
+  role: Exclude<TeamMember["role"], "owner">,
 ): Promise<TeamMember | undefined> {
-  assertDemoMode("Institution team management");
-  return institutionRepository.updateTeamMember(id, patch);
+  return institutionRepository.updateTeamMemberRole(organizationId, id, role);
 }
 
-export async function removeTeamMember(id: string): Promise<void> {
-  assertDemoMode("Institution team management");
-  return institutionRepository.removeTeamMember(id);
+export async function suspendTeamMember(
+  organizationId: string,
+  id: string,
+): Promise<TeamMember | undefined> {
+  return institutionRepository.suspendTeamMember(organizationId, id);
 }
 
-export async function inviteTeamMember(email: string, role: TeamMember["role"]) {
-  assertDemoMode("Institution team management");
-  return institutionRepository.inviteTeamMember(email, role);
+export async function restoreTeamMember(
+  organizationId: string,
+  id: string,
+): Promise<TeamMember | undefined> {
+  return institutionRepository.restoreTeamMember(organizationId, id);
+}
+
+export async function removeTeamMember(organizationId: string, id: string): Promise<void> {
+  return institutionRepository.removeTeamMember(organizationId, id);
+}
+
+export async function inviteTeamMember(
+  organizationId: string,
+  email: string,
+  role: TeamInvitation["role"],
+) {
+  return institutionRepository.inviteTeamMember(organizationId, email, role);
+}
+
+export async function resendTeamInvitation(organizationId: string, id: string) {
+  return institutionRepository.resendTeamInvitation(organizationId, id);
+}
+
+export async function cancelTeamInvitation(organizationId: string, id: string) {
+  return institutionRepository.cancelTeamInvitation(organizationId, id);
+}
+
+export async function transferTeamOwnership(organizationId: string, id: string) {
+  return institutionRepository.transferTeamOwnership(organizationId, id);
 }
