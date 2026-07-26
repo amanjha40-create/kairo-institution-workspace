@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const DEVELOPMENT_API_FALLBACK = "http://localhost:8000";
+
 const rawConfigSchema = z.object({
   VITE_APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
   VITE_DEMO_MODE: z
@@ -41,12 +43,23 @@ if (!parsedConfig.success) {
     "Environment configuration is invalid. Review the public app environment variables before starting the Institution Workspace.";
 } else {
   const env = parsedConfig.data;
-  const apiBaseUrl = env.VITE_API_BASE_URL?.trim() ? env.VITE_API_BASE_URL.trim() : null;
+  const configuredApiBaseUrl = env.VITE_API_BASE_URL?.trim() ? env.VITE_API_BASE_URL.trim() : null;
   const demoMode = env.VITE_DEMO_MODE ?? false;
+  const isDevelopment = env.VITE_APP_ENV === "development";
+  const apiBaseUrl = configuredApiBaseUrl ?? (isDevelopment ? DEVELOPMENT_API_FALLBACK : null);
 
   if (env.VITE_APP_ENV === "production" && demoMode) {
     configError =
       "Production builds cannot enable demo mode. Set VITE_DEMO_MODE=false before deploying.";
+  } else if (env.VITE_APP_ENV === "production" && !configuredApiBaseUrl) {
+    configError =
+      "Production builds require VITE_API_BASE_URL to be set to the HTTPS Kairo API origin.";
+  } else if (
+    env.VITE_APP_ENV === "production" &&
+    configuredApiBaseUrl &&
+    !configuredApiBaseUrl.startsWith("https://")
+  ) {
+    configError = "Production builds require VITE_API_BASE_URL to use an HTTPS origin.";
   } else {
     config = {
       appEnv: env.VITE_APP_ENV,
