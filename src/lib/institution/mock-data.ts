@@ -15,6 +15,10 @@ export const mockInstitution: Institution = {
   address: "12 College Green, Northbridge, NB 44021",
   primaryVerificationEmail: "verify@northbridge.edu",
   domain: "northbridge.edu",
+  location: "Northbridge, NB",
+  workEmail: "verify@northbridge.edu",
+  verificationState: "verified",
+  domainVerifiedAt: "2026-07-15T09:00:00Z",
 };
 
 export const mockTeam: TeamMember[] = [
@@ -683,36 +687,75 @@ export const mockPeople: Person[] = [
 
 export const mockSettings: InstitutionSettings = {
   institution: mockInstitution,
-  preferences: {
-    defaultReviewer: "Hana Suzuki",
-    defaultResponseEmail: "verify@northbridge.edu",
-    assignmentPreference: "round_robin",
-    notifyOnNewRequest: true,
-    notifyOnClarification: true,
-    responseSlaHours: 72,
+  account: {
+    fullName: "Priya Menon",
+    email: "priya.menon@northbridge.edu",
+    phone: "+1 555 010 4421",
+    currentRole: "Registrar",
+    location: "Northbridge, NB",
+    emailVerifiedAt: "2026-07-10T10:00:00Z",
+    phoneVerifiedAt: null,
   },
-  connectedData: {
-    sisStatus: "connected",
-    databaseStatus: "not_connected",
-    apiStatus: "pending",
-    batchImportStatus: "not_connected",
-  },
+  notifications: [
+    {
+      id: "pref_invites",
+      eventType: "trust_invitation_created",
+      label: "Trust invitation",
+      description: "Notifications about Trust Invitations relevant to your institution.",
+      enabled: true,
+      preferredChannels: ["email"],
+      required: false,
+    },
+    {
+      id: "pref_verifications",
+      eventType: "verification_completed",
+      label: "Verification completed",
+      description: "Notifications when a verification request reaches a final resolution.",
+      enabled: true,
+      preferredChannels: ["email"],
+      required: false,
+    },
+    {
+      id: "pref_password_reset",
+      eventType: "password_reset_requested",
+      label: "Password reset requested",
+      description: "Security notifications for password reset requests.",
+      enabled: true,
+      preferredChannels: ["email"],
+      required: true,
+    },
+  ],
+  sessions: [
+    {
+      id: "s1",
+      createdAt: "2026-07-20T08:00:00Z",
+      expiresAt: "2026-08-20T08:00:00Z",
+      lastActiveAt: "2026-07-26T09:30:00Z",
+      current: true,
+      device: "MacBook Pro — Chrome",
+      location: "Northbridge, NB",
+    },
+    {
+      id: "s2",
+      createdAt: "2026-07-18T07:00:00Z",
+      expiresAt: "2026-08-18T07:00:00Z",
+      lastActiveAt: "2026-07-24T21:14:00Z",
+      current: false,
+      device: "iPhone — Safari",
+      location: "Northbridge, NB",
+    },
+  ],
   security: {
-    activeSessions: [
-      {
-        id: "s1",
-        device: "MacBook Pro — Chrome",
-        location: "Northbridge, NB",
-        lastActive: "2026-07-22T11:00:00Z",
-      },
-      {
-        id: "s2",
-        device: "iPhone — Safari",
-        location: "Northbridge, NB",
-        lastActive: "2026-07-21T22:14:00Z",
-      },
-    ],
     domainVerified: true,
+    domainVerifiedAt: "2026-07-15T09:00:00Z",
+    canChangePassword: true,
+  },
+  workspace: {
+    verificationPreferencesAvailable: false,
+    integrationConnectionsAvailable: false,
+    sessionDeviceDetailsAvailable: true,
+    mfaAvailable: false,
+    securityHistoryAvailable: false,
   },
 };
 

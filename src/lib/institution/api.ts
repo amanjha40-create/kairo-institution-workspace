@@ -2,7 +2,11 @@ import { institutionAppConfig } from "./config";
 import {
   assignInstitutionVerificationReviewer,
   cancelInstitutionOrganizationInvitation,
+  changeInstitutionPassword as changeInstitutionUserPassword,
   createInstitutionOrganizationInvitation,
+  getInstitutionAccountSessions,
+  getInstitutionAccountSettings,
+  getInstitutionOrganization,
   getInstitutionOrganizationPeople as fetchInstitutionOrganizationPeople,
   getInstitutionOrganizationPerson,
   getInstitutionOrganizationPersonCredentials,
@@ -14,10 +18,15 @@ import {
   getInstitutionVerificationTimeline,
   removeInstitutionOrganizationMember,
   rejectInstitutionVerificationRequest,
+  revokeAllInstitutionAccountSessions,
+  revokeInstitutionAccountSession,
   resendInstitutionOrganizationInvitation,
   restoreInstitutionOrganizationMember,
   suspendInstitutionOrganizationMember,
   transferInstitutionOrganizationOwnership,
+  updateInstitutionAccountNotificationPreferences,
+  updateInstitutionCurrentUserProfile,
+  updateInstitutionOrganization,
   updateInstitutionVerificationInternalNote,
   updateInstitutionOrganizationMemberRole,
   verifyInstitutionVerificationRequest,
@@ -32,8 +41,10 @@ import {
   unauthorizedError,
 } from "./errors";
 import { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } from "./mock-data";
+import { buildInstitutionNotificationPreferencePayload } from "./settings";
 import type {
   EvidenceFile,
+  InstitutionAccountPreferences,
   InstitutionPeopleDirectory,
   InstitutionTeam,
   InstitutionSettings,
@@ -90,7 +101,33 @@ interface InstitutionRepository {
   ) => Promise<Person["verificationActivity"]>;
   getPersonCredentials: (organizationId: string, id: string) => Promise<Person["credentials"]>;
   getTeam: (organizationId: string) => Promise<InstitutionTeam>;
-  getSettings: () => Promise<InstitutionSettings>;
+  getSettings: (organizationId: string) => Promise<InstitutionSettings>;
+  updateInstitutionProfile: (
+    organizationId: string,
+    payload: {
+      name: string;
+      website?: string | null;
+      location?: string | null;
+      workEmail?: string | null;
+      domain?: string | null;
+    },
+  ) => Promise<InstitutionSettings["institution"]>;
+  updateAccountProfile: (payload: {
+    fullName?: string | null;
+    phone?: string | null;
+    currentRole?: string | null;
+    location?: string | null;
+  }) => Promise<InstitutionAccountPreferences>;
+  updateNotificationPreferences: (
+    preferences: InstitutionSettings["notifications"],
+  ) => Promise<InstitutionSettings["notifications"]>;
+  revokeAccountSession: (sessionId: string) => Promise<void>;
+  revokeAllAccountSessions: () => Promise<void>;
+  changePassword: (payload: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) => Promise<void>;
   inviteTeamMember: (
     organizationId: string,
     email: string,
@@ -130,7 +167,7 @@ const cloneFixture = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const requests: VerificationRequest[] = cloneFixture(mockRequests);
 const people: Person[] = cloneFixture(mockPeople);
 let team: TeamMember[] = cloneFixture(mockTeam);
-const settings: InstitutionSettings = cloneFixture(mockSettings);
+let settings: InstitutionSettings = cloneFixture(mockSettings);
 const magicLinks = cloneFixture(mockMagicLinks);
 
 function getDemoTeamMembers() {
@@ -377,6 +414,63 @@ function demoInstitutionRepository(): InstitutionRepository {
     async getSettings() {
       return delay(cloneFixture(settings));
     },
+    async updateInstitutionProfile(_organizationId, payload) {
+      settings = {
+        ...settings,
+        institution: {
+          ...settings.institution,
+          name: payload.name ?? settings.institution.name,
+          website: payload.website ?? settings.institution.website,
+          location: payload.location ?? settings.institution.location ?? null,
+          address: payload.location ?? settings.institution.address,
+          workEmail: payload.workEmail ?? settings.institution.workEmail ?? null,
+          primaryVerificationEmail:
+            payload.workEmail ?? settings.institution.primaryVerificationEmail,
+          domain: payload.domain ?? settings.institution.domain,
+        },
+      };
+      return delay(cloneFixture(settings.institution));
+    },
+    async updateAccountProfile(payload) {
+      settings = {
+        ...settings,
+        account: {
+          ...settings.account,
+          fullName: payload.fullName ?? settings.account.fullName,
+          phone: payload.phone ?? settings.account.phone ?? null,
+          currentRole: payload.currentRole ?? settings.account.currentRole ?? null,
+          location: payload.location ?? settings.account.location ?? null,
+        },
+      };
+      return delay(cloneFixture(settings.account));
+    },
+    async updateNotificationPreferences(preferences) {
+      settings = {
+        ...settings,
+        notifications: cloneFixture(preferences).map((preference) => ({
+          ...preference,
+          enabled: preference.required ? true : preference.enabled,
+        })),
+      };
+      return delay(cloneFixture(settings.notifications));
+    },
+    async revokeAccountSession(sessionId) {
+      settings = {
+        ...settings,
+        sessions: settings.sessions.filter((session) => session.id !== sessionId),
+      };
+      return delay(undefined);
+    },
+    async revokeAllAccountSessions() {
+      settings = {
+        ...settings,
+        sessions: [],
+      };
+      return delay(undefined);
+    },
+    async changePassword() {
+      return delay(undefined);
+    },
     async inviteTeamMember(_organizationId, email, role) {
       assertTeamManageable();
       const invitation: TeamMember = {
@@ -563,6 +657,24 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getSettings() {
       assertInstitutionBackend("Institution settings");
     },
+    async updateInstitutionProfile() {
+      assertInstitutionBackend("Institution settings");
+    },
+    async updateAccountProfile() {
+      assertInstitutionBackend("Institution settings");
+    },
+    async updateNotificationPreferences() {
+      assertInstitutionBackend("Institution settings");
+    },
+    async revokeAccountSession() {
+      assertInstitutionBackend("Institution settings");
+    },
+    async revokeAllAccountSessions() {
+      assertInstitutionBackend("Institution settings");
+    },
+    async changePassword() {
+      assertInstitutionBackend("Institution settings");
+    },
     async inviteTeamMember() {
       assertInstitutionBackend("Institution team management");
     },
@@ -651,6 +763,52 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async getTeam(organizationId) {
       return getInstitutionOrganizationTeam(organizationId);
+    },
+    async getSettings(organizationId) {
+      const [institution, accountSettings, sessions] = await Promise.all([
+        getInstitutionOrganization(organizationId),
+        getInstitutionAccountSettings(),
+        getInstitutionAccountSessions(),
+      ]);
+
+      return {
+        institution,
+        account: accountSettings.account,
+        notifications: accountSettings.notifications,
+        sessions,
+        security: {
+          domainVerified: Boolean(institution.domainVerifiedAt),
+          domainVerifiedAt: institution.domainVerifiedAt,
+          canChangePassword: true,
+        },
+        workspace: {
+          verificationPreferencesAvailable: false,
+          integrationConnectionsAvailable: false,
+          sessionDeviceDetailsAvailable: false,
+          mfaAvailable: false,
+          securityHistoryAvailable: false,
+        },
+      };
+    },
+    async updateInstitutionProfile(organizationId, payload) {
+      return updateInstitutionOrganization(organizationId, payload);
+    },
+    async updateAccountProfile(payload) {
+      return updateInstitutionCurrentUserProfile(payload);
+    },
+    async updateNotificationPreferences(preferences) {
+      return updateInstitutionAccountNotificationPreferences(
+        buildInstitutionNotificationPreferencePayload(preferences),
+      );
+    },
+    async revokeAccountSession(sessionId) {
+      return revokeInstitutionAccountSession(sessionId);
+    },
+    async revokeAllAccountSessions() {
+      return revokeAllInstitutionAccountSessions();
+    },
+    async changePassword(payload) {
+      return changeInstitutionUserPassword(payload);
     },
     async inviteTeamMember(organizationId, email, role) {
       return createInstitutionOrganizationInvitation(organizationId, {
@@ -847,8 +1005,52 @@ export async function getInstitutionTeam(organizationId: string): Promise<Instit
   return institutionRepository.getTeam(organizationId);
 }
 
-export async function getInstitutionSettings(): Promise<InstitutionSettings> {
-  return institutionRepository.getSettings();
+export async function getInstitutionSettings(organizationId: string): Promise<InstitutionSettings> {
+  return institutionRepository.getSettings(organizationId);
+}
+
+export async function updateInstitutionProfile(
+  organizationId: string,
+  payload: {
+    name: string;
+    website?: string | null;
+    location?: string | null;
+    workEmail?: string | null;
+    domain?: string | null;
+  },
+) {
+  return institutionRepository.updateInstitutionProfile(organizationId, payload);
+}
+
+export async function updateInstitutionAccountProfile(payload: {
+  fullName?: string | null;
+  phone?: string | null;
+  currentRole?: string | null;
+  location?: string | null;
+}) {
+  return institutionRepository.updateAccountProfile(payload);
+}
+
+export async function updateInstitutionNotificationPreferences(
+  preferences: InstitutionSettings["notifications"],
+) {
+  return institutionRepository.updateNotificationPreferences(preferences);
+}
+
+export async function revokeInstitutionSession(sessionId: string) {
+  return institutionRepository.revokeAccountSession(sessionId);
+}
+
+export async function revokeAllInstitutionSessions() {
+  return institutionRepository.revokeAllAccountSessions();
+}
+
+export async function changeInstitutionPassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  return institutionRepository.changePassword(payload);
 }
 
 export async function getPublicInstitutionVerificationByToken(

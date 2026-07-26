@@ -1,6 +1,15 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { getInstitutionSettings } from "@/lib/institution/api";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  changeInstitutionPassword,
+  getInstitutionSettings,
+  revokeAllInstitutionSessions,
+  revokeInstitutionSession,
+  updateInstitutionAccountProfile,
+  updateInstitutionNotificationPreferences,
+  updateInstitutionProfile,
+} from "@/lib/institution/api";
 import {
   ErrorState,
   LoadingState,
@@ -11,177 +20,590 @@ import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institutio
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import { useInstitutionAuth } from "@/lib/institution/auth";
+import { formatDateTime } from "@/lib/institution/format";
+import { formatInstitutionSessionLabel } from "@/lib/institution/settings";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { formatDateTime } from "@/lib/institution/format";
 
 export const Route = createFileRoute("/institution/settings")({
   component: SettingsPage,
 });
 
 function SettingsPage() {
-  const { session } = useInstitutionAuth();
+  const queryClient = useQueryClient();
+  const { session, refreshSession, signOut } = useInstitutionAuth();
   const permissions = getInstitutionPermissions(session);
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: institutionQueryKeys.settings(),
-    queryFn: getInstitutionSettings,
+  const organizationId = session?.institutionId;
+
+  const settingsQuery = useQuery({
+    queryKey: institutionQueryKeys.settings(organizationId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionSettings(organizationId);
+    },
+    enabled: Boolean(organizationId) && permissions.canManageSettings,
+  });
+
+  const [institutionForm, setInstitutionForm] = useState<{
+    name: string;
+    type: string;
+    website: string;
+    workEmail: string;
+    domain: string;
+    location: string;
+  } | null>(null);
+  const [accountForm, setAccountForm] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    currentRole: string;
+    location: string;
+  } | null>(null);
+  const [notificationForm, setNotificationForm] = useState<ReturnType<
+    typeof normalizeNotificationForm
+  > | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  useEffect(() => {
+    if (!settingsQuery.data) {
+      return;
+    }
+
+    setInstitutionForm({
+      name: settingsQuery.data.institution.name,
+      type: settingsQuery.data.institution.type,
+      website:
+        settingsQuery.data.institution.website === "—"
+          ? ""
+          : settingsQuery.data.institution.website,
+      workEmail:
+        settingsQuery.data.institution.workEmail ??
+        (settingsQuery.data.institution.primaryVerificationEmail === "—"
+          ? ""
+          : settingsQuery.data.institution.primaryVerificationEmail),
+      domain:
+        settingsQuery.data.institution.domain === "—" ? "" : settingsQuery.data.institution.domain,
+      location: settingsQuery.data.institution.location ?? "",
+    });
+    setAccountForm({
+      fullName: settingsQuery.data.account.fullName,
+      email: settingsQuery.data.account.email,
+      phone: settingsQuery.data.account.phone ?? "",
+      currentRole: settingsQuery.data.account.currentRole ?? "",
+      location: settingsQuery.data.account.location ?? "",
+    });
+    setNotificationForm(normalizeNotificationForm(settingsQuery.data.notifications));
+  }, [settingsQuery.data]);
+
+  const institutionDirty = useMemo(() => {
+    if (!settingsQuery.data || !institutionForm) return false;
+    return (
+      JSON.stringify(institutionForm) !==
+      JSON.stringify({
+        name: settingsQuery.data.institution.name,
+        type: settingsQuery.data.institution.type,
+        website:
+          settingsQuery.data.institution.website === "—"
+            ? ""
+            : settingsQuery.data.institution.website,
+        workEmail:
+          settingsQuery.data.institution.workEmail ??
+          (settingsQuery.data.institution.primaryVerificationEmail === "—"
+            ? ""
+            : settingsQuery.data.institution.primaryVerificationEmail),
+        domain:
+          settingsQuery.data.institution.domain === "—"
+            ? ""
+            : settingsQuery.data.institution.domain,
+        location: settingsQuery.data.institution.location ?? "",
+      })
+    );
+  }, [institutionForm, settingsQuery.data]);
+
+  const accountDirty = useMemo(() => {
+    if (!settingsQuery.data || !accountForm) return false;
+    return (
+      JSON.stringify(accountForm) !==
+      JSON.stringify({
+        fullName: settingsQuery.data.account.fullName,
+        email: settingsQuery.data.account.email,
+        phone: settingsQuery.data.account.phone ?? "",
+        currentRole: settingsQuery.data.account.currentRole ?? "",
+        location: settingsQuery.data.account.location ?? "",
+      })
+    );
+  }, [accountForm, settingsQuery.data]);
+
+  const notificationsDirty = useMemo(() => {
+    if (!settingsQuery.data || !notificationForm) return false;
+    return (
+      JSON.stringify(notificationForm) !==
+      JSON.stringify(normalizeNotificationForm(settingsQuery.data.notifications))
+    );
+  }, [notificationForm, settingsQuery.data]);
+
+  const invalidateSettings = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: institutionQueryKeys.settings(organizationId),
+    });
+  };
+
+  const institutionMutation = useMutation({
+    mutationFn: async () => {
+      if (!organizationId || !institutionForm) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return updateInstitutionProfile(organizationId, {
+        name: institutionForm.name.trim(),
+        website: nullableString(institutionForm.website),
+        workEmail: nullableString(institutionForm.workEmail),
+        domain: nullableString(institutionForm.domain),
+        location: nullableString(institutionForm.location),
+      });
+    },
+    onSuccess: async () => {
+      await refreshSession();
+      await invalidateSettings();
+      toast.success("Institution profile updated.");
+    },
+    onError: (error) => {
+      toast.error(getInstitutionErrorMessage(error, "We couldn't save the institution profile."));
+    },
+  });
+
+  const accountMutation = useMutation({
+    mutationFn: async () => {
+      if (!accountForm) {
+        throw new Error("Account preferences are unavailable.");
+      }
+
+      return updateInstitutionAccountProfile({
+        fullName: nullableString(accountForm.fullName),
+        phone: nullableString(accountForm.phone),
+        currentRole: nullableString(accountForm.currentRole),
+        location: nullableString(accountForm.location),
+      });
+    },
+    onSuccess: async () => {
+      await refreshSession();
+      await invalidateSettings();
+      toast.success("Account preferences updated.");
+    },
+    onError: (error) => {
+      toast.error(getInstitutionErrorMessage(error, "We couldn't save account preferences."));
+    },
+  });
+
+  const notificationsMutation = useMutation({
+    mutationFn: async () => {
+      if (!notificationForm) {
+        throw new Error("Notification preferences are unavailable.");
+      }
+
+      return updateInstitutionNotificationPreferences(notificationForm);
+    },
+    onSuccess: async () => {
+      await invalidateSettings();
+      toast.success("Notification preferences updated.");
+    },
+    onError: (error) => {
+      toast.error(getInstitutionErrorMessage(error, "We couldn't save notification preferences."));
+    },
+  });
+
+  const revokeSessionMutation = useMutation({
+    mutationFn: revokeInstitutionSession,
+    onSuccess: async () => {
+      await invalidateSettings();
+      toast.success("Session revoked.");
+    },
+    onError: (error) => {
+      toast.error(getInstitutionErrorMessage(error, "We couldn't revoke that session."));
+    },
+  });
+
+  const revokeAllSessionsMutation = useMutation({
+    mutationFn: revokeAllInstitutionSessions,
+    onSuccess: async () => {
+      toast.success("All sessions revoked.");
+      await signOut().catch(() => undefined);
+    },
+    onError: (error) => {
+      toast.error(getInstitutionErrorMessage(error, "We couldn't revoke all sessions."));
+    },
+  });
+
+  const passwordMutation = useMutation({
+    mutationFn: async () => {
+      if (
+        !passwordForm.currentPassword ||
+        !passwordForm.newPassword ||
+        !passwordForm.confirmPassword
+      ) {
+        throw new Error("Please complete all password fields.");
+      }
+
+      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+        throw new Error("New passwords do not match.");
+      }
+
+      return changeInstitutionPassword(passwordForm);
+    },
+    onSuccess: async () => {
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      toast.success("Password updated.");
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : getInstitutionErrorMessage(error, "We couldn't update the password.");
+      toast.error(message);
+    },
   });
 
   if (!permissions.canManageSettings) return <PermissionDeniedState />;
-  if (isLoading) return <LoadingState />;
-  if (isError && isInstitutionError(error) && error.status === 503) {
+  if (settingsQuery.isLoading) return <LoadingState />;
+  if (
+    settingsQuery.isError &&
+    isInstitutionError(settingsQuery.error) &&
+    settingsQuery.error.status === 503
+  ) {
     return (
-      <ServiceUnavailableState title="Settings are unavailable" description={error.uiMessage} />
+      <ServiceUnavailableState
+        title="Settings are unavailable"
+        description={settingsQuery.error.uiMessage}
+      />
     );
   }
-  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
+  if (
+    settingsQuery.isError ||
+    !settingsQuery.data ||
+    !institutionForm ||
+    !accountForm ||
+    !notificationForm
+  ) {
+    return <ErrorState onRetry={() => void settingsQuery.refetch()} />;
+  }
 
-  const s = data;
-  const ownerOnlyMessage = permissions.canManageOwnerActions
-    ? null
-    : "Only Owners can change institution profile and security controls. Backend enforcement is still required.";
+  const data = settingsQuery.data;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Configure your institution's profile, verification preferences, connected data, and
-          security.
+          Configure your institution profile, account preferences, notifications, and security
+          controls supported by the shared Kairo backend.
         </p>
       </div>
 
       <Section title="Institution profile">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Institution name" defaultValue={s.institution.name} />
-          <Field label="Institution type" defaultValue={s.institution.type} />
-          <Field label="Website" defaultValue={s.institution.website} />
+          <Field
+            label="Institution name"
+            value={institutionForm.name}
+            onChange={(value) =>
+              setInstitutionForm((current) => (current ? { ...current, name: value } : current))
+            }
+          />
+          <Field label="Institution type" value={institutionForm.type} disabled />
+          <Field
+            label="Website"
+            value={institutionForm.website}
+            onChange={(value) =>
+              setInstitutionForm((current) => (current ? { ...current, website: value } : current))
+            }
+          />
           <Field
             label="Primary verification email"
-            defaultValue={s.institution.primaryVerificationEmail}
+            value={institutionForm.workEmail}
+            onChange={(value) =>
+              setInstitutionForm((current) =>
+                current ? { ...current, workEmail: value } : current,
+              )
+            }
           />
-          <Field label="Institution domain" defaultValue={s.institution.domain} />
-          <Field label="Official address" defaultValue={s.institution.address} />
+          <Field
+            label="Institution domain"
+            value={institutionForm.domain}
+            onChange={(value) =>
+              setInstitutionForm((current) => (current ? { ...current, domain: value } : current))
+            }
+          />
+          <Field
+            label="Location"
+            value={institutionForm.location}
+            onChange={(value) =>
+              setInstitutionForm((current) => (current ? { ...current, location: value } : current))
+            }
+          />
         </div>
-        {ownerOnlyMessage && (
-          <p className="mt-3 text-xs text-muted-foreground">{ownerOnlyMessage}</p>
-        )}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
+          <div>
+            Domain verification:{" "}
+            {data.security.domainVerified
+              ? `Verified${data.security.domainVerifiedAt ? ` on ${formatDateTime(data.security.domainVerifiedAt)}` : ""}`
+              : "Not verified yet"}
+          </div>
+          <div>Ownership transfer remains available only from the Team page.</div>
+        </div>
         <div className="mt-4 flex justify-end">
           <Button
-            disabled={!permissions.canManageOwnerActions}
-            onClick={() => toast.error("Institution settings are not writable yet.")}
+            disabled={!institutionDirty || institutionMutation.isPending}
+            onClick={() => institutionMutation.mutate()}
           >
-            Save changes
+            {institutionMutation.isPending ? "Saving..." : "Save changes"}
           </Button>
         </div>
       </Section>
 
-      <Section title="Verification preferences">
+      <Section title="Account preferences">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Default reviewer" defaultValue={s.preferences.defaultReviewer} />
-          <Field label="Default response email" defaultValue={s.preferences.defaultResponseEmail} />
           <Field
-            label="Response target (hours)"
-            defaultValue={String(s.preferences.responseSlaHours ?? "")}
+            label="Full name"
+            value={accountForm.fullName}
+            onChange={(value) =>
+              setAccountForm((current) => (current ? { ...current, fullName: value } : current))
+            }
           />
-          <Field label="Assignment preference" defaultValue={s.preferences.assignmentPreference} />
+          <Field label="Email" value={accountForm.email} disabled />
+          <Field
+            label="Phone"
+            value={accountForm.phone}
+            onChange={(value) =>
+              setAccountForm((current) => (current ? { ...current, phone: value } : current))
+            }
+          />
+          <Field
+            label="Current role"
+            value={accountForm.currentRole}
+            onChange={(value) =>
+              setAccountForm((current) => (current ? { ...current, currentRole: value } : current))
+            }
+          />
+          <Field
+            label="Location"
+            value={accountForm.location}
+            onChange={(value) =>
+              setAccountForm((current) => (current ? { ...current, location: value } : current))
+            }
+          />
         </div>
-        <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <ToggleRow
-            label="Notify on new request"
-            description="Email the default reviewer when a new request arrives."
-            defaultChecked={s.preferences.notifyOnNewRequest}
-          />
-          <ToggleRow
-            label="Notify on clarification response"
-            description="Email the reviewer when candidates respond to clarifications."
-            defaultChecked={s.preferences.notifyOnClarification}
-          />
+        <div className="mt-4 flex flex-wrap gap-4 border-t border-border pt-4 text-xs text-muted-foreground">
+          <span>
+            Email verification:{" "}
+            {data.account.emailVerifiedAt
+              ? formatDateTime(data.account.emailVerifiedAt)
+              : "Not verified"}
+          </span>
+          <span>
+            Phone verification:{" "}
+            {data.account.phoneVerifiedAt
+              ? formatDateTime(data.account.phoneVerifiedAt)
+              : "Not verified"}
+          </span>
         </div>
+        <div className="mt-4 flex justify-end">
+          <Button
+            disabled={!accountDirty || accountMutation.isPending}
+            onClick={() => accountMutation.mutate()}
+          >
+            {accountMutation.isPending ? "Saving..." : "Save changes"}
+          </Button>
+        </div>
+      </Section>
+
+      <Section title="Notification preferences">
+        {notificationForm.length === 0 ? (
+          <UnavailableMessage description="No notification preference contract is available for this institution account yet." />
+        ) : (
+          <>
+            <div className="space-y-3">
+              {notificationForm.map((preference) => (
+                <ToggleRow
+                  key={preference.id}
+                  label={preference.label}
+                  description={preference.description}
+                  checked={preference.enabled}
+                  disabled={preference.required}
+                  onCheckedChange={(checked) =>
+                    setNotificationForm((current) =>
+                      current
+                        ? current.map((item) =>
+                            item.id === preference.id
+                              ? {
+                                  ...item,
+                                  enabled: item.required ? true : checked,
+                                }
+                              : item,
+                          )
+                        : current,
+                    )
+                  }
+                />
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end border-t border-border pt-4">
+              <Button
+                disabled={!notificationsDirty || notificationsMutation.isPending}
+                onClick={() => notificationsMutation.mutate()}
+              >
+                {notificationsMutation.isPending ? "Saving..." : "Save changes"}
+              </Button>
+            </div>
+          </>
+        )}
+      </Section>
+
+      <Section title="Verification preferences">
+        <UnavailableMessage description="Default reviewer, assignment, SLA, and workflow-specific workspace verification preferences are not exposed by the shared backend for institution workspaces yet." />
       </Section>
 
       <Section title="Connected data">
         <p className="mb-4 text-xs text-muted-foreground">
-          Connect your institution's data sources so verification requests can be matched
-          automatically. Kairo's institution integration team will help you configure a secure
-          connection.
+          SIS, secure API, and batch-import connection management will appear here once institution
+          integration contracts are approved.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <IntegrationCard
+          <UnavailableFeatureCard
             title="Student Information System"
-            description="Sync programme, enrolment, and graduation records."
-            status={s.connectedData.sisStatus}
+            description="Student lifecycle and enrolment connections are not supported yet."
           />
-          <IntegrationCard
-            title="Institution database"
-            description="Direct connection to your institution's registrar database."
-            status={s.connectedData.databaseStatus}
-          />
-          <IntegrationCard
+          <UnavailableFeatureCard
             title="Secure API"
-            description="Real-time API for on-demand record lookups."
-            status={s.connectedData.apiStatus}
+            description="Real-time institution record lookups are not configured yet."
           />
-          <IntegrationCard
+          <UnavailableFeatureCard
             title="Batch data import"
-            description="Scheduled CSV or file-based data imports."
-            status={s.connectedData.batchImportStatus}
+            description="Scheduled import management is not available yet."
+          />
+          <UnavailableFeatureCard
+            title="Security history"
+            description="Administrative audit and security-history views are coming soon."
           />
         </div>
       </Section>
 
       <Section title="Security">
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
-            <div className="text-sm font-medium">Institution domain verification</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {s.security.domainVerified ? `Verified for ${s.institution.domain}` : "Not verified"}
-            </div>
-          </div>
-          <div className="border-t border-border pt-4">
             <div className="text-sm font-medium">Active sessions</div>
-            <ul className="mt-2 divide-y divide-border rounded-md border border-border">
-              {s.security.activeSessions.map((sess) => (
-                <li key={sess.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                  <div>
-                    <div>{sess.device}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {sess.location} · {formatDateTime(sess.lastActive)}
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!permissions.canManageOwnerActions}
-                    onClick={() => toast.error("Session revocation is not available yet.")}
+            {data.sessions.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">No active sessions found.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-border rounded-md border border-border">
+                {data.sessions.map((activeSession) => (
+                  <li
+                    key={activeSession.id}
+                    className="flex flex-col gap-3 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
                   >
-                    Revoke
-                  </Button>
-                </li>
-              ))}
-            </ul>
+                    <div>
+                      <div className="font-medium">
+                        {formatInstitutionSessionLabel(activeSession)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Last active {formatDateTime(activeSession.lastActiveAt)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Expires {formatDateTime(activeSession.expiresAt)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Device details unavailable from the current backend contract.
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={revokeSessionMutation.isPending}
+                      onClick={() => revokeSessionMutation.mutate(activeSession.id)}
+                    >
+                      Revoke
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <Button
               variant="outline"
               className="mt-3"
-              disabled={!permissions.canManageOwnerActions}
-              onClick={() => toast.error("Global session revocation is not available yet.")}
+              disabled={revokeAllSessionsMutation.isPending}
+              onClick={() => revokeAllSessionsMutation.mutate()}
             >
-              Sign out all sessions
+              {revokeAllSessionsMutation.isPending ? "Signing out..." : "Sign out all sessions"}
             </Button>
           </div>
+
           <div className="border-t border-border pt-4">
             <div className="text-sm font-medium">Password</div>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <Field label="Current password" type="password" />
-              <Field label="New password" type="password" />
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Button onClick={() => toast.error("Password updates are not available yet.")}>
-                Update password
-              </Button>
+            {data.security.canChangePassword ? (
+              <>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="Current password"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(value) =>
+                      setPasswordForm((current) => ({ ...current, currentPassword: value }))
+                    }
+                  />
+                  <Field
+                    label="New password"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(value) =>
+                      setPasswordForm((current) => ({ ...current, newPassword: value }))
+                    }
+                  />
+                  <Field
+                    label="Confirm new password"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(value) =>
+                      setPasswordForm((current) => ({ ...current, confirmPassword: value }))
+                    }
+                  />
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    disabled={passwordMutation.isPending}
+                    onClick={() => passwordMutation.mutate()}
+                  >
+                    {passwordMutation.isPending ? "Updating..." : "Update password"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <UnavailableMessage description="Password updates are not available for this account type yet." />
+            )}
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <div className="text-sm font-medium">Additional security controls</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <UnavailableFeatureCard
+                title="Multi-factor authentication"
+                description="MFA setup is not available through the current institution workspace contract."
+              />
+              <UnavailableFeatureCard
+                title="Security history"
+                description="Recent security events and audit history are not available yet."
+              />
             </div>
           </div>
         </div>
@@ -190,7 +612,21 @@ function SettingsPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function normalizeNotificationForm(
+  notifications: Awaited<ReturnType<typeof getInstitutionSettings>>["notifications"],
+) {
+  return notifications.map((preference) => ({
+    ...preference,
+    enabled: preference.required ? true : preference.enabled,
+  }));
+}
+
+function nullableString(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-white p-5 shadow-sm">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -203,17 +639,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Field({
   label,
-  defaultValue,
+  value,
+  onChange,
   type = "text",
+  disabled = false,
 }: {
   label: string;
-  defaultValue?: string;
+  value: string;
+  onChange?: (value: string) => void;
   type?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
       <Label className="text-xs">{label}</Label>
-      <Input type={type} defaultValue={defaultValue} />
+      <Input
+        type={type}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
     </div>
   );
 }
@@ -221,55 +666,45 @@ function Field({
 function ToggleRow({
   label,
   description,
-  defaultChecked,
+  checked,
+  disabled,
+  onCheckedChange,
 }: {
   label: string;
   description: string;
-  defaultChecked?: boolean;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-3">
       <div>
         <div className="text-sm font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">{description}</div>
       </div>
-      <Switch defaultChecked={defaultChecked} />
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+      />
     </div>
   );
 }
 
-function IntegrationCard({
-  title,
-  description,
-  status,
-}: {
-  title: string;
-  description: string;
-  status: "not_connected" | "pending" | "connected" | "error";
-}) {
-  const statusLabel = {
-    not_connected: "Not Connected",
-    pending: "Connection Pending",
-    connected: "Connected",
-    error: "Connection Error",
-  }[status];
-  const tone = {
-    not_connected: "bg-slate-100 text-slate-700 ring-slate-200",
-    pending: "bg-amber-50 text-amber-800 ring-amber-200",
-    connected: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-    error: "bg-rose-50 text-rose-800 ring-rose-200",
-  }[status];
+function UnavailableMessage({ description }: { description: string }) {
+  return <p className="text-sm text-muted-foreground">{description}</p>;
+}
+
+function UnavailableFeatureCard({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-lg border border-border p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold">{title}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{description}</div>
-        </div>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${tone}`}>
-          {statusLabel}
+    <div className="rounded-lg border border-dashed border-border bg-secondary/40 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium">{title}</div>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
+          Coming soon
         </span>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">{description}</p>
     </div>
   );
 }

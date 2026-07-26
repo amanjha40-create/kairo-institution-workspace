@@ -18,6 +18,7 @@ export const institutionQueryKeys = {
   personCredentials: (organizationId: string | undefined, personId: string) =>
     ["institution", "person", organizationId ?? "none", personId, "credentials"] as const,
   team: (organizationId?: string) => ["institution", "team", organizationId ?? "none"] as const,
-  settings: () => ["institution", "settings"] as const,
+  settings: (organizationId?: string) =>
+    ["institution", "settings", organizationId ?? "none"] as const,
   magicLink: (token: string) => ["institution", "magic-link", token] as const,
 };

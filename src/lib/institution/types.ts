@@ -65,7 +65,12 @@ export type PassportStatus = "connected" | "not_connected" | "sharing_limited";
 export type ProfessionalField = "current_title" | "current_employer";
 
 export type InstitutionCredentialStatus =
-  "verified" | "pending" | "corrected" | "revoked" | "issued" | "superseded";
+  | "verified"
+  | "pending"
+  | "corrected"
+  | "revoked"
+  | "issued"
+  | "superseded";
 
 export type Role = "owner" | "admin" | "reviewer" | "member";
 
@@ -83,7 +88,10 @@ export type WorkspaceAccessState =
   | "membership_suspended";
 
 export type OrganizationVerificationState =
-  "setup_incomplete" | "verification_pending" | "verified" | "additional_information_required";
+  | "setup_incomplete"
+  | "verification_pending"
+  | "verified"
+  | "additional_information_required";
 
 export interface CandidateClaim {
   candidateName: string;
@@ -303,27 +311,60 @@ export interface Institution {
   primaryVerificationEmail: string;
   domain: string;
   logoUrl?: string;
+  location?: string | null;
+  workEmail?: string | null;
+  industry?: string | null;
+  verificationState?: OrganizationVerificationState | null;
+  domainVerifiedAt?: string | null;
+  suspendedAt?: string | null;
+}
+
+export interface InstitutionAccountPreferences {
+  fullName: string;
+  email: string;
+  phone?: string | null;
+  currentRole?: string | null;
+  location?: string | null;
+  emailVerifiedAt?: string | null;
+  phoneVerifiedAt?: string | null;
+}
+
+export interface InstitutionNotificationPreference {
+  id: string;
+  eventType: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  preferredChannels: string[];
+  required: boolean;
+}
+
+export interface InstitutionAccountSession {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  lastActiveAt: string;
+  current: boolean;
+  device?: string | null;
+  location?: string | null;
 }
 
 export interface InstitutionSettings {
   institution: Institution;
-  preferences: {
-    defaultReviewer: string;
-    defaultResponseEmail: string;
-    assignmentPreference: "manual" | "round_robin" | "load_based";
-    notifyOnNewRequest: boolean;
-    notifyOnClarification: boolean;
-    responseSlaHours?: number;
-  };
-  connectedData: {
-    sisStatus: "not_connected" | "pending" | "connected" | "error";
-    databaseStatus: "not_connected" | "pending" | "connected" | "error";
-    apiStatus: "not_connected" | "pending" | "connected" | "error";
-    batchImportStatus: "not_connected" | "pending" | "connected" | "error";
-  };
+  account: InstitutionAccountPreferences;
+  notifications: InstitutionNotificationPreference[];
+  sessions: InstitutionAccountSession[];
   security: {
-    activeSessions: { id: string; device: string; location: string; lastActive: string }[];
     domainVerified: boolean;
+    domainVerifiedAt?: string | null;
+    canChangePassword: boolean;
+  };
+  workspace: {
+    verificationPreferencesAvailable: boolean;
+    integrationConnectionsAvailable: boolean;
+    sessionDeviceDetailsAvailable: boolean;
+    mfaAvailable: boolean;
+    securityHistoryAvailable: boolean;
   };
 }
 

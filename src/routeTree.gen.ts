@@ -9,32 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
 import { Route as InstitutionRouteImport } from './routes/institution'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as InstitutionIndexRouteImport } from './routes/institution.index'
-import { Route as InstitutionLoginRouteImport } from './routes/institution.login'
-import { Route as InstitutionSettingsRouteImport } from './routes/institution.settings'
 import { Route as InstitutionTeamRouteImport } from './routes/institution.team'
-import { Route as InstitutionPeopleIndexRouteImport } from './routes/institution.people.index'
-import { Route as InstitutionPeoplePersonIdRouteImport } from './routes/institution.people.$personId'
-import { Route as InstitutionSignupIndexRouteImport } from './routes/institution.signup.index'
-import { Route as InstitutionSignupAdminRouteImport } from './routes/institution.signup.admin'
-import { Route as InstitutionSignupInstitutionRouteImport } from './routes/institution.signup.institution'
-import { Route as InstitutionSignupReviewRouteImport } from './routes/institution.signup.review'
-import { Route as InstitutionSignupSuccessRouteImport } from './routes/institution.signup.success'
-import { Route as InstitutionSignupVerifyRouteImport } from './routes/institution.signup.verify'
+import { Route as InstitutionSettingsRouteImport } from './routes/institution.settings'
+import { Route as InstitutionLoginRouteImport } from './routes/institution.login'
 import { Route as InstitutionVerificationsIndexRouteImport } from './routes/institution.verifications.index'
-import { Route as InstitutionVerificationsRequestIdRouteImport } from './routes/institution.verifications.$requestId'
+import { Route as InstitutionSignupIndexRouteImport } from './routes/institution.signup.index'
+import { Route as InstitutionPeopleIndexRouteImport } from './routes/institution.people.index'
 import { Route as InstitutionVerifyTokenRouteImport } from './routes/institution.verify.$token'
+import { Route as InstitutionVerificationsRequestIdRouteImport } from './routes/institution.verifications.$requestId'
+import { Route as InstitutionSignupVerifyRouteImport } from './routes/institution.signup.verify'
+import { Route as InstitutionSignupSuccessRouteImport } from './routes/institution.signup.success'
+import { Route as InstitutionSignupReviewRouteImport } from './routes/institution.signup.review'
+import { Route as InstitutionSignupInstitutionRouteImport } from './routes/institution.signup.institution'
+import { Route as InstitutionSignupAdminRouteImport } from './routes/institution.signup.admin'
+import { Route as InstitutionPeoplePersonIdRouteImport } from './routes/institution.people.$personId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const InstitutionRoute = InstitutionRouteImport.update({
   id: '/institution',
   path: '/institution',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InstitutionIndexRoute = InstitutionIndexRouteImport.update({
@@ -42,9 +42,9 @@ const InstitutionIndexRoute = InstitutionIndexRouteImport.update({
   path: '/',
   getParentRoute: () => InstitutionRoute,
 } as any)
-const InstitutionLoginRoute = InstitutionLoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const InstitutionTeamRoute = InstitutionTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
   getParentRoute: () => InstitutionRoute,
 } as any)
 const InstitutionSettingsRoute = InstitutionSettingsRouteImport.update({
@@ -52,52 +52,9 @@ const InstitutionSettingsRoute = InstitutionSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => InstitutionRoute,
 } as any)
-const InstitutionTeamRoute = InstitutionTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => InstitutionRoute,
-} as any)
-const InstitutionPeopleIndexRoute = InstitutionPeopleIndexRouteImport.update({
-  id: '/people/',
-  path: '/people/',
-  getParentRoute: () => InstitutionRoute,
-} as any)
-const InstitutionPeoplePersonIdRoute =
-  InstitutionPeoplePersonIdRouteImport.update({
-    id: '/people/$personId',
-    path: '/people/$personId',
-    getParentRoute: () => InstitutionRoute,
-  } as any)
-const InstitutionSignupIndexRoute = InstitutionSignupIndexRouteImport.update({
-  id: '/signup/',
-  path: '/signup/',
-  getParentRoute: () => InstitutionRoute,
-} as any)
-const InstitutionSignupAdminRoute = InstitutionSignupAdminRouteImport.update({
-  id: '/signup/admin',
-  path: '/signup/admin',
-  getParentRoute: () => InstitutionRoute,
-} as any)
-const InstitutionSignupInstitutionRoute =
-  InstitutionSignupInstitutionRouteImport.update({
-    id: '/signup/institution',
-    path: '/signup/institution',
-    getParentRoute: () => InstitutionRoute,
-  } as any)
-const InstitutionSignupReviewRoute = InstitutionSignupReviewRouteImport.update({
-  id: '/signup/review',
-  path: '/signup/review',
-  getParentRoute: () => InstitutionRoute,
-} as any)
-const InstitutionSignupSuccessRoute =
-  InstitutionSignupSuccessRouteImport.update({
-    id: '/signup/success',
-    path: '/signup/success',
-    getParentRoute: () => InstitutionRoute,
-  } as any)
-const InstitutionSignupVerifyRoute = InstitutionSignupVerifyRouteImport.update({
-  id: '/signup/verify',
-  path: '/signup/verify',
+const InstitutionLoginRoute = InstitutionLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => InstitutionRoute,
 } as any)
 const InstitutionVerificationsIndexRoute =
@@ -106,17 +63,60 @@ const InstitutionVerificationsIndexRoute =
     path: '/verifications/',
     getParentRoute: () => InstitutionRoute,
   } as any)
+const InstitutionSignupIndexRoute = InstitutionSignupIndexRouteImport.update({
+  id: '/signup/',
+  path: '/signup/',
+  getParentRoute: () => InstitutionRoute,
+} as any)
+const InstitutionPeopleIndexRoute = InstitutionPeopleIndexRouteImport.update({
+  id: '/people/',
+  path: '/people/',
+  getParentRoute: () => InstitutionRoute,
+} as any)
+const InstitutionVerifyTokenRoute = InstitutionVerifyTokenRouteImport.update({
+  id: '/verify/$token',
+  path: '/verify/$token',
+  getParentRoute: () => InstitutionRoute,
+} as any)
 const InstitutionVerificationsRequestIdRoute =
   InstitutionVerificationsRequestIdRouteImport.update({
     id: '/verifications/$requestId',
     path: '/verifications/$requestId',
     getParentRoute: () => InstitutionRoute,
   } as any)
-const InstitutionVerifyTokenRoute = InstitutionVerifyTokenRouteImport.update({
-  id: '/verify/$token',
-  path: '/verify/$token',
+const InstitutionSignupVerifyRoute = InstitutionSignupVerifyRouteImport.update({
+  id: '/signup/verify',
+  path: '/signup/verify',
   getParentRoute: () => InstitutionRoute,
 } as any)
+const InstitutionSignupSuccessRoute =
+  InstitutionSignupSuccessRouteImport.update({
+    id: '/signup/success',
+    path: '/signup/success',
+    getParentRoute: () => InstitutionRoute,
+  } as any)
+const InstitutionSignupReviewRoute = InstitutionSignupReviewRouteImport.update({
+  id: '/signup/review',
+  path: '/signup/review',
+  getParentRoute: () => InstitutionRoute,
+} as any)
+const InstitutionSignupInstitutionRoute =
+  InstitutionSignupInstitutionRouteImport.update({
+    id: '/signup/institution',
+    path: '/signup/institution',
+    getParentRoute: () => InstitutionRoute,
+  } as any)
+const InstitutionSignupAdminRoute = InstitutionSignupAdminRouteImport.update({
+  id: '/signup/admin',
+  path: '/signup/admin',
+  getParentRoute: () => InstitutionRoute,
+} as any)
+const InstitutionPeoplePersonIdRoute =
+  InstitutionPeoplePersonIdRouteImport.update({
+    id: '/people/$personId',
+    path: '/people/$personId',
+    getParentRoute: () => InstitutionRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -241,18 +241,18 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/institution': {
       id: '/institution'
       path: '/institution'
       fullPath: '/institution'
       preLoaderRoute: typeof InstitutionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/institution/': {
@@ -262,11 +262,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstitutionIndexRouteImport
       parentRoute: typeof InstitutionRoute
     }
-    '/institution/login': {
-      id: '/institution/login'
-      path: '/login'
-      fullPath: '/institution/login'
-      preLoaderRoute: typeof InstitutionLoginRouteImport
+    '/institution/team': {
+      id: '/institution/team'
+      path: '/team'
+      fullPath: '/institution/team'
+      preLoaderRoute: typeof InstitutionTeamRouteImport
       parentRoute: typeof InstitutionRoute
     }
     '/institution/settings': {
@@ -276,67 +276,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstitutionSettingsRouteImport
       parentRoute: typeof InstitutionRoute
     }
-    '/institution/team': {
-      id: '/institution/team'
-      path: '/team'
-      fullPath: '/institution/team'
-      preLoaderRoute: typeof InstitutionTeamRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/people/': {
-      id: '/institution/people/'
-      path: '/people'
-      fullPath: '/institution/people/'
-      preLoaderRoute: typeof InstitutionPeopleIndexRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/people/$personId': {
-      id: '/institution/people/$personId'
-      path: '/people/$personId'
-      fullPath: '/institution/people/$personId'
-      preLoaderRoute: typeof InstitutionPeoplePersonIdRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/': {
-      id: '/institution/signup/'
-      path: '/signup'
-      fullPath: '/institution/signup/'
-      preLoaderRoute: typeof InstitutionSignupIndexRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/admin': {
-      id: '/institution/signup/admin'
-      path: '/signup/admin'
-      fullPath: '/institution/signup/admin'
-      preLoaderRoute: typeof InstitutionSignupAdminRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/institution': {
-      id: '/institution/signup/institution'
-      path: '/signup/institution'
-      fullPath: '/institution/signup/institution'
-      preLoaderRoute: typeof InstitutionSignupInstitutionRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/review': {
-      id: '/institution/signup/review'
-      path: '/signup/review'
-      fullPath: '/institution/signup/review'
-      preLoaderRoute: typeof InstitutionSignupReviewRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/success': {
-      id: '/institution/signup/success'
-      path: '/signup/success'
-      fullPath: '/institution/signup/success'
-      preLoaderRoute: typeof InstitutionSignupSuccessRouteImport
-      parentRoute: typeof InstitutionRoute
-    }
-    '/institution/signup/verify': {
-      id: '/institution/signup/verify'
-      path: '/signup/verify'
-      fullPath: '/institution/signup/verify'
-      preLoaderRoute: typeof InstitutionSignupVerifyRouteImport
+    '/institution/login': {
+      id: '/institution/login'
+      path: '/login'
+      fullPath: '/institution/login'
+      preLoaderRoute: typeof InstitutionLoginRouteImport
       parentRoute: typeof InstitutionRoute
     }
     '/institution/verifications/': {
@@ -346,11 +290,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstitutionVerificationsIndexRouteImport
       parentRoute: typeof InstitutionRoute
     }
-    '/institution/verifications/$requestId': {
-      id: '/institution/verifications/$requestId'
-      path: '/verifications/$requestId'
-      fullPath: '/institution/verifications/$requestId'
-      preLoaderRoute: typeof InstitutionVerificationsRequestIdRouteImport
+    '/institution/signup/': {
+      id: '/institution/signup/'
+      path: '/signup'
+      fullPath: '/institution/signup/'
+      preLoaderRoute: typeof InstitutionSignupIndexRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/people/': {
+      id: '/institution/people/'
+      path: '/people'
+      fullPath: '/institution/people/'
+      preLoaderRoute: typeof InstitutionPeopleIndexRouteImport
       parentRoute: typeof InstitutionRoute
     }
     '/institution/verify/$token': {
@@ -358,6 +309,55 @@ declare module '@tanstack/react-router' {
       path: '/verify/$token'
       fullPath: '/institution/verify/$token'
       preLoaderRoute: typeof InstitutionVerifyTokenRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/verifications/$requestId': {
+      id: '/institution/verifications/$requestId'
+      path: '/verifications/$requestId'
+      fullPath: '/institution/verifications/$requestId'
+      preLoaderRoute: typeof InstitutionVerificationsRequestIdRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/signup/verify': {
+      id: '/institution/signup/verify'
+      path: '/signup/verify'
+      fullPath: '/institution/signup/verify'
+      preLoaderRoute: typeof InstitutionSignupVerifyRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/signup/success': {
+      id: '/institution/signup/success'
+      path: '/signup/success'
+      fullPath: '/institution/signup/success'
+      preLoaderRoute: typeof InstitutionSignupSuccessRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/signup/review': {
+      id: '/institution/signup/review'
+      path: '/signup/review'
+      fullPath: '/institution/signup/review'
+      preLoaderRoute: typeof InstitutionSignupReviewRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/signup/institution': {
+      id: '/institution/signup/institution'
+      path: '/signup/institution'
+      fullPath: '/institution/signup/institution'
+      preLoaderRoute: typeof InstitutionSignupInstitutionRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/signup/admin': {
+      id: '/institution/signup/admin'
+      path: '/signup/admin'
+      fullPath: '/institution/signup/admin'
+      preLoaderRoute: typeof InstitutionSignupAdminRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/people/$personId': {
+      id: '/institution/people/$personId'
+      path: '/people/$personId'
+      fullPath: '/institution/people/$personId'
+      preLoaderRoute: typeof InstitutionPeoplePersonIdRouteImport
       parentRoute: typeof InstitutionRoute
     }
   }

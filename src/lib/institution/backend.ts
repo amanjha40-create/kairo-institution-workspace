@@ -10,7 +10,9 @@ import {
   unauthorizedError,
 } from "./errors";
 import type {
+  Institution,
   InstitutionCredential,
+  InstitutionSettings,
   InstitutionTeam,
   InternalNote,
   InstitutionWorkspaceBootstrap,
@@ -26,6 +28,7 @@ import {
   mapCredentialStatusLabel,
   mapInstitutionVerificationStatus,
 } from "./people";
+import { mapInstitutionNotificationPreference, mapInstitutionOrganizationType } from "./settings";
 import {
   buildCandidateClaimFromTrustContext,
   formatVerificationTimelineLabel,
@@ -91,6 +94,51 @@ interface BackendWorkspaceBootstrapResponse {
 interface BackendOrganizationResponse {
   public_id: string;
   name: string;
+  organization_type: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  work_email: string | null;
+  domain: string | null;
+  domain_verified_at: string | null;
+  verification_state: InstitutionWorkspaceBootstrap["organizationVerificationState"];
+  setup_completed_at: string | null;
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  member_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface BackendNotificationPreferenceResponse {
+  public_id: string;
+  event_type: string;
+  enabled: boolean;
+  preferred_channels: string[];
+}
+
+interface BackendAccountSettingsResponse {
+  profile: BackendUserProfileResponse;
+  notification_preferences: BackendNotificationPreferenceResponse[];
+}
+
+interface BackendAccountSessionResponse {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  last_active_at: string;
+  current: boolean;
+}
+
+interface BackendUserProfileResponse {
+  id: string;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+  current_role: string | null;
+  location: string | null;
+  email_verified_at: string | null;
+  phone_verified_at: string | null;
 }
 
 interface BackendOrganizationMemberResponse {
@@ -530,6 +578,65 @@ function mapOrganizationInvitation(payload: BackendOrganizationInvitationRespons
   };
 }
 
+function mapInstitutionOrganization(payload: BackendOrganizationResponse): Institution {
+  return {
+    id: payload.public_id,
+    name: payload.name,
+    type: mapInstitutionOrganizationType(payload.organization_type),
+    website: payload.website || "—",
+    address: payload.location || "—",
+    primaryVerificationEmail: payload.work_email || "—",
+    domain: payload.domain || "—",
+    location: payload.location,
+    workEmail: payload.work_email,
+    industry: payload.industry,
+    verificationState: payload.verification_state,
+    domainVerifiedAt: payload.domain_verified_at,
+    suspendedAt: payload.suspended_at,
+  };
+}
+
+function mapInstitutionAccountProfile(
+  payload: BackendUserProfileResponse,
+): InstitutionSettings["account"] {
+  return {
+    fullName: payload.full_name || "",
+    email: payload.email,
+    phone: payload.phone,
+    currentRole: payload.current_role,
+    location: payload.location,
+    emailVerifiedAt: payload.email_verified_at,
+    phoneVerifiedAt: payload.phone_verified_at,
+  };
+}
+
+function mapInstitutionNotificationPreferences(
+  payload: BackendNotificationPreferenceResponse[],
+): InstitutionSettings["notifications"] {
+  return payload.map((preference) =>
+    mapInstitutionNotificationPreference({
+      id: preference.public_id,
+      eventType: preference.event_type,
+      enabled: preference.enabled,
+      preferredChannels: preference.preferred_channels,
+    }),
+  );
+}
+
+function mapInstitutionAccountSessions(
+  payload: BackendAccountSessionResponse[],
+): InstitutionSettings["sessions"] {
+  return payload.map((session) => ({
+    id: session.id,
+    createdAt: session.created_at,
+    expiresAt: session.expires_at,
+    lastActiveAt: session.last_active_at,
+    current: session.current,
+    device: null,
+    location: null,
+  }));
+}
+
 function unwrapListResponse<T>(payload: T[] | BackendPageResponse<T>) {
   return Array.isArray(payload) ? payload : payload.items;
 }
@@ -955,6 +1062,162 @@ export async function getInstitutionWorkspaceBootstrap(accessToken: string) {
     accessToken,
   );
   return mapWorkspaceBootstrap(payload);
+}
+
+export async function getInstitutionOrganization(orgPublicId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationResponse>(
+      `/api/v1/organizations/${orgPublicId}`,
+      { method: "GET" },
+      accessToken,
+    );
+
+    return mapInstitutionOrganization(payload);
+  });
+}
+
+export async function updateInstitutionOrganization(
+  orgPublicId: string,
+  payload: {
+    name?: string;
+    website?: string | null;
+    location?: string | null;
+    workEmail?: string | null;
+    domain?: string | null;
+  },
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const response = await apiRequest<BackendOrganizationResponse>(
+      `/api/v1/organizations/${orgPublicId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: payload.name,
+          website: payload.website,
+          location: payload.location,
+          work_email: payload.workEmail,
+          domain: payload.domain,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapInstitutionOrganization(response);
+  });
+}
+
+export async function getInstitutionAccountSettings() {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendAccountSettingsResponse>(
+      "/api/v1/account/settings",
+      { method: "GET" },
+      accessToken,
+    );
+
+    return {
+      account: mapInstitutionAccountProfile(payload.profile),
+      notifications: mapInstitutionNotificationPreferences(payload.notification_preferences),
+    };
+  });
+}
+
+export async function updateInstitutionAccountNotificationPreferences(
+  preferences: {
+    event_type: string;
+    enabled: boolean;
+    preferred_channels: string[];
+    quiet_hours?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }[],
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendAccountSettingsResponse>(
+      "/api/v1/account/settings",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          notification_preferences: preferences,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapInstitutionNotificationPreferences(payload.notification_preferences);
+  });
+}
+
+export async function updateInstitutionCurrentUserProfile(payload: {
+  fullName?: string | null;
+  phone?: string | null;
+  currentRole?: string | null;
+  location?: string | null;
+}) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const response = await apiRequest<BackendUserProfileResponse>(
+      "/api/v1/users/me",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          full_name: payload.fullName,
+          phone: payload.phone,
+          current_role: payload.currentRole,
+          location: payload.location,
+        }),
+      },
+      accessToken,
+    );
+
+    return mapInstitutionAccountProfile(response);
+  });
+}
+
+export async function getInstitutionAccountSessions() {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendAccountSessionResponse[]>(
+      "/api/v1/account/sessions",
+      { method: "GET" },
+      accessToken,
+    );
+
+    return mapInstitutionAccountSessions(payload);
+  });
+}
+
+export async function revokeInstitutionAccountSession(sessionId: string) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    await apiRequest<void>(
+      `/api/v1/account/sessions/${sessionId}`,
+      { method: "DELETE" },
+      accessToken,
+    );
+  });
+}
+
+export async function revokeAllInstitutionAccountSessions() {
+  return withInstitutionAccessToken(async (accessToken) => {
+    await apiRequest<void>("/api/v1/account/sessions", { method: "DELETE" }, accessToken);
+  });
+}
+
+export async function changeInstitutionPassword(input: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    await apiRequest<void>(
+      "/api/v1/auth/change-password",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: input.currentPassword,
+          new_password: input.newPassword,
+          confirm_password: input.confirmPassword,
+        }),
+      },
+      accessToken,
+    );
+  });
 }
 
 export async function startOrganizationStaffSignup(input: {
