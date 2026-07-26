@@ -16,11 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  InstitutionStatusBadge,
-  PassportStatusBadge,
-  TrustStatusBadge,
-} from "@/components/institution/StatusBadge";
+import { InstitutionStatusBadge, TrustStatusBadge } from "@/components/institution/StatusBadge";
 import {
   EmptyState,
   ErrorState,
@@ -300,7 +296,7 @@ function PeoplePage() {
                       <TrustStatusBadge status={person.trustStatus} />
                     </td>
                     <td className="px-4 py-3">
-                      <PassportStatusBadge status={person.passportStatus} />
+                      <span className="text-xs text-muted-foreground">Unavailable</span>
                     </td>
                   </tr>
                 ))}
@@ -355,7 +351,6 @@ function PeoplePage() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   <InstitutionStatusBadge status={person.institutionStatus} />
-                  <PassportStatusBadge status={person.passportStatus} />
                 </div>
               </Link>
             ))}

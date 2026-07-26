@@ -23,7 +23,6 @@ import type {
 } from "./types";
 import {
   deriveLastUpdated,
-  derivePassportStatusFromProfile,
   mapCredentialStatusLabel,
   mapInstitutionVerificationStatus,
 } from "./people";
@@ -751,7 +750,6 @@ function mapInstitutionPersonListItem(payload: BackendInstitutionPersonListItemR
     name: payload.display_name,
     institutionStatus: payload.lifecycle_status,
     trustStatus: mapInstitutionVerificationStatus(payload.verification_status),
-    passportStatus: derivePassportStatusFromProfile(sharedProfile),
     degree: payload.degree || "—",
     graduationYear: formatInstitutionPeriodValue(payload.graduation),
     activeVerificationCount: payload.active_verification_count,
@@ -786,7 +784,6 @@ function mapInstitutionPersonDetail(payload: BackendInstitutionPersonDetailRespo
   const person: Person = {
     ...mapInstitutionPersonListItem(payload),
     studentIdMasked: payload.student_id_masked || undefined,
-    passportStatus: derivePassportStatusFromProfile(sharedProfile),
     relationship: {
       institutionName: "—",
       studentId: payload.student_id || payload.student_id_masked || "—",

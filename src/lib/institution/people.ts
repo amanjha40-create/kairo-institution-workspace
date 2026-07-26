@@ -1,11 +1,4 @@
-import type {
-  InstitutionCredentialStatus,
-  PassportStatus,
-  Person,
-  ProfessionalField,
-  SharedProfessionalProfile,
-  TrustStatus,
-} from "./types";
+import type { InstitutionCredentialStatus, Person, ProfessionalField, TrustStatus } from "./types";
 
 export function getProfessionalFieldLabel(field: ProfessionalField) {
   switch (field) {
@@ -16,23 +9,6 @@ export function getProfessionalFieldLabel(field: ProfessionalField) {
     default:
       return String(field).replaceAll("_", " ");
   }
-}
-
-export function derivePassportStatusFromProfile(
-  profile: SharedProfessionalProfile,
-): PassportStatus {
-  const consentedFields = profile.consentedFields ?? [];
-  const sharedFields = new Set(profile.fields?.map((field) => field.field) ?? []);
-
-  if (consentedFields.length === 0 && sharedFields.size === 0) {
-    return "not_connected";
-  }
-
-  if (consentedFields.length > sharedFields.size) {
-    return "sharing_limited";
-  }
-
-  return sharedFields.size > 0 ? "connected" : "not_connected";
 }
 
 export function deriveLastUpdated(

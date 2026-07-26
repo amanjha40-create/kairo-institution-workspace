@@ -234,7 +234,7 @@ export interface Person {
   name: string;
   institutionStatus: InstitutionStatus;
   trustStatus: TrustStatus;
-  passportStatus: PassportStatus;
+  passportStatus?: PassportStatus;
   degree: string;
   graduationYear: string;
   activeVerificationCount?: number;

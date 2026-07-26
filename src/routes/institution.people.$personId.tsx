@@ -20,11 +20,7 @@ import {
   PermissionDeniedState,
   ServiceUnavailableState,
 } from "@/components/institution/PageStates";
-import {
-  InstitutionStatusBadge,
-  PassportStatusBadge,
-  TrustStatusBadge,
-} from "@/components/institution/StatusBadge";
+import { InstitutionStatusBadge, TrustStatusBadge } from "@/components/institution/StatusBadge";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/institution/people/$personId")({
@@ -148,7 +144,6 @@ function PersonDetailPage() {
           <div className="mt-2 flex flex-wrap gap-1.5">
             <InstitutionStatusBadge status={person.institutionStatus} />
             <TrustStatusBadge status={person.trustStatus} />
-            <PassportStatusBadge status={person.passportStatus} />
           </div>
         </div>
         {person.lastUpdated ? (
