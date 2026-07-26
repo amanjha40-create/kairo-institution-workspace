@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { getInstitutionPeople } from "@/lib/institution/api";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import { ProfessionalInfoValue } from "@/components/institution/ProfessionalInfoValue";
-import { isInstitutionError } from "@/lib/institution/errors";
+import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
+import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,54 +25,113 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  PermissionDeniedState,
   ServiceUnavailableState,
 } from "@/components/institution/PageStates";
+import type { InstitutionStatus } from "@/lib/institution/types";
 
 export const Route = createFileRoute("/institution/people/")({
   component: PeoplePage,
 });
 
+const verificationStatuses = [
+  { value: "all", label: "All verification" },
+  { value: "not_started", label: "Not Started" },
+  { value: "pending", label: "Pending" },
+  { value: "verified", label: "Verified" },
+  { value: "clarification_required", label: "Clarification Required" },
+  { value: "discrepancy", label: "Discrepancy" },
+  { value: "rejected", label: "Rejected" },
+  { value: "expired", label: "Expired" },
+] as const;
+
 function PeoplePage() {
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: institutionQueryKeys.people(),
-    queryFn: getInstitutionPeople,
-  });
+  const { session } = useInstitutionAuth();
+  const permissions = getInstitutionPermissions(session);
+  const organizationId = session?.institutionId;
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [trustFilter, setTrustFilter] = useState("all");
-  const [passportFilter, setPassportFilter] = useState("all");
-  const [professionFilter, setProfessionFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<InstitutionStatus | "all">("all");
+  const [verificationFilter, setVerificationFilter] = useState("all");
+  const [programmeFilter, setProgrammeFilter] = useState("all");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [graduationFilter, setGraduationFilter] = useState("all");
 
-  const professions = useMemo(() => {
-    const s = new Set<string>();
-    (data ?? []).forEach((p) => {
-      if (p.sharedProfile.consented && p.sharedProfile.currentTitle)
-        s.add(p.sharedProfile.currentTitle);
-      (p.sharedProfile.credentials ?? []).forEach((c) => s.add(c.name));
-    });
-    return Array.from(s);
-  }, [data]);
+  const filters = useMemo(
+    () => ({
+      search: query || undefined,
+      lifecycleStatus: statusFilter,
+      verificationStatus: verificationFilter,
+      programme: programmeFilter === "all" ? undefined : programmeFilter,
+      department: departmentFilter === "all" ? undefined : departmentFilter,
+      graduationPeriod: graduationFilter === "all" ? undefined : graduationFilter,
+      pageSize: 100,
+    }),
+    [departmentFilter, graduationFilter, programmeFilter, query, statusFilter, verificationFilter],
+  );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (data ?? []).filter((p) => {
-      if (statusFilter !== "all" && p.institutionStatus !== statusFilter) return false;
-      if (trustFilter !== "all" && p.trustStatus !== trustFilter) return false;
-      if (passportFilter !== "all" && p.passportStatus !== passportFilter) return false;
-      if (professionFilter !== "all") {
-        const t = p.sharedProfile.currentTitle;
-        const creds = (p.sharedProfile.credentials ?? []).map((c) => c.name);
-        if (t !== professionFilter && !creds.includes(professionFilter)) return false;
+  const optionsQuery = useQuery({
+    queryKey: institutionQueryKeys.people(organizationId, { pageSize: 100 }),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
       }
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.relationship.studentId.toLowerCase().includes(q) ||
-        p.degree.toLowerCase().includes(q) ||
-        (p.sharedProfile.currentCompany ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [data, query, statusFilter, trustFilter, passportFilter, professionFilter]);
+
+      return getInstitutionPeople(organizationId, { pageSize: 100 });
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople,
+  });
+
+  const peopleQuery = useQuery({
+    queryKey: institutionQueryKeys.people(organizationId, filters),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionPeople(organizationId, filters);
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople,
+  });
+
+  const data = peopleQuery.data;
+  const filterSource = useMemo(
+    () => optionsQuery.data?.items ?? data?.items ?? [],
+    [data?.items, optionsQuery.data?.items],
+  );
+
+  const programmes = useMemo(
+    () =>
+      Array.from(
+        new Set(filterSource.map((person) => person.relationship.programme).filter(Boolean)),
+      ),
+    [filterSource],
+  );
+  const departments = useMemo(
+    () =>
+      Array.from(
+        new Set(filterSource.map((person) => person.relationship.department).filter(Boolean)),
+      ),
+    [filterSource],
+  );
+  const graduationPeriods = useMemo(
+    () =>
+      Array.from(
+        new Set(filterSource.map((person) => person.relationship.graduationPeriod).filter(Boolean)),
+      ),
+    [filterSource],
+  );
+
+  if (!permissions.canViewPeople) {
+    return <PermissionDeniedState />;
+  }
+
+  if (
+    peopleQuery.isError &&
+    isInstitutionError(peopleQuery.error) &&
+    peopleQuery.error.status === 403
+  ) {
+    return <PermissionDeniedState />;
+  }
 
   return (
     <div className="space-y-6">
@@ -81,61 +142,79 @@ function PeoplePage() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Search name, student ID, degree, company…"
+            placeholder="Search name, student ID, programme, department…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Status" />
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as InstitutionStatus | "all")}
+          >
+            <SelectTrigger className="w-[170px]">
+              <SelectValue placeholder="Lifecycle" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="all">All lifecycle</SelectItem>
               <SelectItem value="current_student">Current Student</SelectItem>
               <SelectItem value="alumni">Alumni</SelectItem>
               <SelectItem value="withdrawn">Withdrawn</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={trustFilter} onValueChange={setTrustFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Trust" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All trust</SelectItem>
-              <SelectItem value="institution_verified">Institution Verified</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="disputed">Disputed</SelectItem>
-              <SelectItem value="revoked">Revoked</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={passportFilter} onValueChange={setPassportFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Passport" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All passports</SelectItem>
-              <SelectItem value="connected">Connected</SelectItem>
-              <SelectItem value="not_connected">Not Connected</SelectItem>
-              <SelectItem value="sharing_limited">Sharing Limited</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={professionFilter} onValueChange={setProfessionFilter}>
+          <Select value={verificationFilter} onValueChange={setVerificationFilter}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Profession" />
+              <SelectValue placeholder="Verification" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Any profession</SelectItem>
-              {professions.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
+              {verificationStatuses.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Programme" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All programmes</SelectItem>
+              {programmes.map((programme) => (
+                <SelectItem key={programme} value={programme}>
+                  {programme}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All departments</SelectItem>
+              {departments.map((department) => (
+                <SelectItem key={department} value={department}>
+                  {department}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={graduationFilter} onValueChange={setGraduationFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Graduation" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All graduation</SelectItem>
+              {graduationPeriods.map((period) => (
+                <SelectItem key={period} value={period}>
+                  {period}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -143,13 +222,18 @@ function PeoplePage() {
         </div>
       </div>
 
-      {isLoading ? (
+      {peopleQuery.isLoading ? (
         <LoadingState />
-      ) : isError && isInstitutionError(error) && error.status === 503 ? (
-        <ServiceUnavailableState title="People are unavailable" description={error.uiMessage} />
-      ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
-      ) : filtered.length === 0 ? (
+      ) : peopleQuery.isError &&
+        isInstitutionError(peopleQuery.error) &&
+        peopleQuery.error.status === 503 ? (
+        <ServiceUnavailableState
+          title="People are unavailable"
+          description={getInstitutionErrorMessage(peopleQuery.error)}
+        />
+      ) : peopleQuery.isError ? (
+        <ErrorState onRetry={() => peopleQuery.refetch()} />
+      ) : !data || data.items.length === 0 ? (
         <EmptyState
           title={query ? "No matching people" : "No connected people"}
           description={
@@ -160,6 +244,12 @@ function PeoplePage() {
         />
       ) : (
         <>
+          {data.total > data.items.length && (
+            <p className="text-xs text-muted-foreground">
+              Showing the first {data.items.length} people out of {data.total}.
+            </p>
+          )}
+
           <div className="hidden overflow-hidden rounded-lg border border-border bg-white md:block">
             <table className="w-full text-sm">
               <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -170,47 +260,47 @@ function PeoplePage() {
                   <th className="px-4 py-2 font-medium">Graduation</th>
                   <th className="px-4 py-2 font-medium">Current Title</th>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-4 py-2 font-medium">Trust</th>
+                  <th className="px-4 py-2 font-medium">Verification</th>
                   <th className="px-4 py-2 font-medium">Passport</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((p) => (
-                  <tr key={p.id} className="hover:bg-secondary/40">
+                {data.items.map((person) => (
+                  <tr key={person.id} className="hover:bg-secondary/40">
                     <td className="px-4 py-3">
                       <Link
                         to="/institution/people/$personId"
-                        params={{ personId: p.id }}
+                        params={{ personId: person.id }}
                         className="font-medium text-foreground hover:text-[color:var(--kairo-navy)]"
                       >
-                        {p.name}
+                        {person.name}
                       </Link>
                       <div className="text-xs text-muted-foreground">
-                        {p.relationship.studentId}
+                        {person.studentIdMasked ?? person.relationship.studentId}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <InstitutionStatusBadge status={p.institutionStatus} />
+                      <InstitutionStatusBadge status={person.institutionStatus} />
                     </td>
-                    <td className="px-4 py-3">{p.degree}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{p.graduationYear}</td>
+                    <td className="px-4 py-3">{person.degree}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{person.graduationYear}</td>
                     <td className="px-4 py-3">
                       <ProfessionalInfoValue
-                        consented={p.sharedProfile.consented}
-                        value={p.sharedProfile.currentTitle}
+                        consented={person.sharedProfile.consented}
+                        value={person.sharedProfile.currentTitle}
                       />
                     </td>
                     <td className="px-4 py-3">
                       <ProfessionalInfoValue
-                        consented={p.sharedProfile.consented}
-                        value={p.sharedProfile.currentCompany}
+                        consented={person.sharedProfile.consented}
+                        value={person.sharedProfile.currentCompany}
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <TrustStatusBadge status={p.trustStatus} />
+                      <TrustStatusBadge status={person.trustStatus} />
                     </td>
                     <td className="px-4 py-3">
-                      <PassportStatusBadge status={p.passportStatus} />
+                      <PassportStatusBadge status={person.passportStatus} />
                     </td>
                   </tr>
                 ))}
@@ -219,35 +309,37 @@ function PeoplePage() {
           </div>
 
           <div className="space-y-3 md:hidden">
-            {filtered.map((p) => (
+            {data.items.map((person) => (
               <Link
-                key={p.id}
+                key={person.id}
                 to="/institution/people/$personId"
-                params={{ personId: p.id }}
+                params={{ personId: person.id }}
                 className="block rounded-lg border border-border bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.relationship.studentId}</div>
+                    <div className="truncate text-sm font-semibold">{person.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {person.studentIdMasked ?? person.relationship.studentId}
+                    </div>
                   </div>
-                  <TrustStatusBadge status={p.trustStatus} />
+                  <TrustStatusBadge status={person.trustStatus} />
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground">Degree</div>
-                    <div>{p.degree}</div>
+                    <div>{person.degree}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Graduation</div>
-                    <div>{p.graduationYear}</div>
+                    <div>{person.graduationYear}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Current title</div>
                     <div>
                       <ProfessionalInfoValue
-                        consented={p.sharedProfile.consented}
-                        value={p.sharedProfile.currentTitle}
+                        consented={person.sharedProfile.consented}
+                        value={person.sharedProfile.currentTitle}
                       />
                     </div>
                   </div>
@@ -255,15 +347,15 @@ function PeoplePage() {
                     <div className="text-muted-foreground">Company</div>
                     <div>
                       <ProfessionalInfoValue
-                        consented={p.sharedProfile.consented}
-                        value={p.sharedProfile.currentCompany}
+                        consented={person.sharedProfile.consented}
+                        value={person.sharedProfile.currentCompany}
                       />
                     </div>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  <InstitutionStatusBadge status={p.institutionStatus} />
-                  <PassportStatusBadge status={p.passportStatus} />
+                  <InstitutionStatusBadge status={person.institutionStatus} />
+                  <PassportStatusBadge status={person.passportStatus} />
                 </div>
               </Link>
             ))}

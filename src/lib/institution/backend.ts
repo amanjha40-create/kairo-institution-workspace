@@ -10,15 +10,23 @@ import {
   unauthorizedError,
 } from "./errors";
 import type {
+  InstitutionCredential,
   InstitutionTeam,
   InternalNote,
   InstitutionWorkspaceBootstrap,
+  Person,
   TimelineEvent,
   TeamInvitation,
   TeamMember,
   VerificationRequest,
   VerificationStatus,
 } from "./types";
+import {
+  deriveLastUpdated,
+  derivePassportStatusFromProfile,
+  mapCredentialStatusLabel,
+  mapInstitutionVerificationStatus,
+} from "./people";
 import {
   buildCandidateClaimFromTrustContext,
   formatVerificationTimelineLabel,
@@ -192,6 +200,85 @@ interface BackendVerificationTimelineResponse {
 
 interface BackendPageResponse<T> {
   items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  offset: number;
+  limit: number;
+}
+
+interface BackendInstitutionPeriodResponse {
+  date: string | null;
+  period: string | null;
+}
+
+interface BackendInstitutionProfessionalFieldValueResponse {
+  field: "current_title" | "current_employer";
+  value: string;
+  consented_at: string;
+  expires_at: string | null;
+}
+
+interface BackendInstitutionPersonListItemResponse {
+  public_id: string;
+  display_name: string;
+  student_id_masked: string | null;
+  lifecycle_status: Person["institutionStatus"];
+  degree: string | null;
+  programme: string | null;
+  department: string | null;
+  admission: BackendInstitutionPeriodResponse;
+  graduation: BackendInstitutionPeriodResponse;
+  verification_status: string;
+  active_verification_count: number;
+  professional_information: BackendInstitutionProfessionalFieldValueResponse[];
+}
+
+interface BackendInstitutionVerificationEventResponse {
+  public_id: string;
+  request_public_id: string;
+  event_type: string;
+  event_source: string;
+  previous_status: string | null;
+  new_status: string | null;
+  created_at: string;
+}
+
+interface BackendInstitutionCredentialEventResponse {
+  public_id: string;
+  event_type: string;
+  previous_status: string | null;
+  new_status: string | null;
+  created_at: string;
+}
+
+interface BackendInstitutionCredentialResponse {
+  public_id: string;
+  credential_type: string;
+  title: string;
+  degree: string | null;
+  programme: string | null;
+  department: string | null;
+  issued: BackendInstitutionPeriodResponse;
+  credential_number: string | null;
+  status: string;
+  version: number;
+  events: BackendInstitutionCredentialEventResponse[];
+}
+
+interface BackendInstitutionPersonDetailResponse extends BackendInstitutionPersonListItemResponse {
+  student_id: string | null;
+  consented_professional_fields: Array<"current_title" | "current_employer">;
+  verification_history: BackendInstitutionVerificationEventResponse[];
+  credentials: BackendInstitutionCredentialResponse[];
+  lifecycle_events: Array<{
+    public_id: string;
+    previous_status: string | null;
+    new_status: string | null;
+    reason: string | null;
+    created_at: string;
+  }>;
 }
 
 interface ApiRequestOptions extends RequestInit {
@@ -260,6 +347,17 @@ export interface VerificationRequestActionInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface InstitutionPeopleQueryInput {
+  search?: string;
+  lifecycleStatus?: Person["institutionStatus"] | "all";
+  programme?: string;
+  department?: string;
+  graduationPeriod?: string;
+  studentId?: string;
+  verificationStatus?: string | "all";
+  pageSize?: number;
+}
+
 function getApiBaseUrl(feature: string) {
   const base = institutionAppConfig.apiBaseUrl?.trim();
   if (!base) {
@@ -277,6 +375,18 @@ function buildApiUrl(path: string, feature: string) {
   }
 
   return `${base}${normalizedPath}`;
+}
+
+function buildQueryString(params: Record<string, string | number | undefined>) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") continue;
+    searchParams.set(key, String(value));
+  }
+
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
 }
 
 function safeReadAuthTokens(): StoredInstitutionAuthTokens | null {
@@ -525,6 +635,179 @@ function mapInternalNote(payload: BackendVerificationRequestResponse): InternalN
       body: payload.organization_internal_note,
     },
   ];
+}
+
+function formatInstitutionEventLabel(eventType: string) {
+  return eventType
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatInstitutionPeriodValue(period: BackendInstitutionPeriodResponse) {
+  return period.period || period.date || "—";
+}
+
+function mapInstitutionProfessionalProfile(
+  items: BackendInstitutionProfessionalFieldValueResponse[],
+  consentedFields?: Array<"current_title" | "current_employer">,
+) {
+  const currentTitle = items.find((item) => item.field === "current_title");
+  const currentEmployer = items.find((item) => item.field === "current_employer");
+
+  return {
+    consented: (consentedFields?.length ?? items.length) > 0,
+    currentTitle: currentTitle?.value,
+    currentCompany: currentEmployer?.value,
+    fields: items.map((item) => ({
+      field: item.field,
+      value: item.value,
+      consentedAt: item.consented_at,
+      expiresAt: item.expires_at,
+    })),
+    consentedFields: (consentedFields ?? items.map((item) => item.field)).filter(
+      (field, index, allFields) => allFields.indexOf(field) === index,
+    ),
+  } as Person["sharedProfile"];
+}
+
+function mapInstitutionCredentialEvent(payload: BackendInstitutionCredentialEventResponse) {
+  const statusDetail =
+    payload.new_status && payload.previous_status
+      ? `${payload.previous_status} -> ${payload.new_status}`
+      : payload.new_status || payload.previous_status;
+
+  return {
+    at: payload.created_at,
+    label: statusDetail
+      ? `${formatInstitutionEventLabel(payload.event_type)} · ${statusDetail}`
+      : formatInstitutionEventLabel(payload.event_type),
+  };
+}
+
+function mapInstitutionCredential(
+  payload: BackendInstitutionCredentialResponse,
+): InstitutionCredential {
+  const history = payload.events.map(mapInstitutionCredentialEvent);
+
+  return {
+    id: payload.public_id,
+    name: payload.title,
+    status: payload.status as InstitutionCredential["status"],
+    issueDate: payload.issued.date || payload.issued.period || "—",
+    issuePeriod: payload.issued.period || undefined,
+    lastUpdated: history[0]?.at || payload.issued.date || payload.issued.period || "",
+    history,
+    credentialType: payload.credential_type,
+    degree: payload.degree || undefined,
+    programme: payload.programme || undefined,
+    department: payload.department || undefined,
+    credentialNumber: payload.credential_number,
+    version: payload.version,
+  };
+}
+
+function mapInstitutionVerificationActivity(
+  payload: BackendInstitutionVerificationEventResponse,
+): Person["verificationActivity"][number] {
+  const result =
+    payload.new_status && payload.previous_status
+      ? `${payload.previous_status} -> ${payload.new_status}`
+      : payload.new_status || formatInstitutionEventLabel(payload.event_type);
+
+  return {
+    id: payload.public_id,
+    requestingOrg: formatInstitutionEventLabel(payload.event_type),
+    date: payload.created_at,
+    result,
+    reviewer: formatInstitutionEventLabel(payload.event_source),
+    status: "in_progress",
+    requestId: payload.request_public_id,
+    eventSource: payload.event_source,
+    previousStatus: payload.previous_status,
+    newStatus: payload.new_status,
+  };
+}
+
+function mapInstitutionLifecycleEvents(
+  items: BackendInstitutionPersonDetailResponse["lifecycle_events"],
+): TimelineEvent[] {
+  return items.map((item) => ({
+    id: item.public_id,
+    at: item.created_at,
+    label: item.new_status
+      ? `Lifecycle changed to ${formatInstitutionEventLabel(item.new_status)}`
+      : "Lifecycle updated",
+    detail: item.reason || undefined,
+  }));
+}
+
+function mapInstitutionPersonListItem(payload: BackendInstitutionPersonListItemResponse): Person {
+  const sharedProfile = mapInstitutionProfessionalProfile(payload.professional_information);
+
+  return {
+    id: payload.public_id,
+    name: payload.display_name,
+    institutionStatus: payload.lifecycle_status,
+    trustStatus: mapInstitutionVerificationStatus(payload.verification_status),
+    passportStatus: derivePassportStatusFromProfile(sharedProfile),
+    degree: payload.degree || "—",
+    graduationYear: formatInstitutionPeriodValue(payload.graduation),
+    activeVerificationCount: payload.active_verification_count,
+    studentIdMasked: payload.student_id_masked || undefined,
+    relationship: {
+      institutionName: "—",
+      studentId: payload.student_id_masked || "—",
+      status: payload.lifecycle_status,
+      degree: payload.degree || "—",
+      programme: payload.programme || "—",
+      department: payload.department || "—",
+      admissionPeriod: formatInstitutionPeriodValue(payload.admission),
+      graduationPeriod: formatInstitutionPeriodValue(payload.graduation),
+      verificationStatus: mapInstitutionVerificationStatus(payload.verification_status),
+    },
+    sharedProfile,
+    credentials: [],
+    verificationActivity: [],
+    timeline: [],
+  };
+}
+
+function mapInstitutionPersonDetail(payload: BackendInstitutionPersonDetailResponse): Person {
+  const sharedProfile = mapInstitutionProfessionalProfile(
+    payload.professional_information,
+    payload.consented_professional_fields,
+  );
+  const credentials = payload.credentials.map(mapInstitutionCredential);
+  const verificationActivity = payload.verification_history.map(mapInstitutionVerificationActivity);
+  const timeline = mapInstitutionLifecycleEvents(payload.lifecycle_events);
+
+  const person: Person = {
+    ...mapInstitutionPersonListItem(payload),
+    studentIdMasked: payload.student_id_masked || undefined,
+    passportStatus: derivePassportStatusFromProfile(sharedProfile),
+    relationship: {
+      institutionName: "—",
+      studentId: payload.student_id || payload.student_id_masked || "—",
+      status: payload.lifecycle_status,
+      degree: payload.degree || "—",
+      programme: payload.programme || "—",
+      department: payload.department || "—",
+      admissionPeriod: formatInstitutionPeriodValue(payload.admission),
+      graduationPeriod: formatInstitutionPeriodValue(payload.graduation),
+      verificationStatus: mapInstitutionVerificationStatus(payload.verification_status),
+    },
+    sharedProfile,
+    credentials,
+    verificationActivity,
+    timeline,
+  };
+
+  return {
+    ...person,
+    lastUpdated: deriveLastUpdated(person),
+  };
 }
 
 function toStoredTokens(payload: BackendTokenResponse): StoredInstitutionAuthTokens {
@@ -956,6 +1239,93 @@ export async function transferInstitutionOrganizationOwnership(
       },
       accessToken,
     );
+  });
+}
+
+export async function getInstitutionOrganizationPeople(
+  orgPublicId: string,
+  input: InstitutionPeopleQueryInput = {},
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const query = buildQueryString({
+      search: input.search?.trim() || undefined,
+      lifecycle_status:
+        input.lifecycleStatus && input.lifecycleStatus !== "all"
+          ? input.lifecycleStatus
+          : undefined,
+      programme: input.programme?.trim() || undefined,
+      department: input.department?.trim() || undefined,
+      graduation_period: input.graduationPeriod?.trim() || undefined,
+      student_id: input.studentId?.trim() || undefined,
+      verification_status:
+        input.verificationStatus && input.verificationStatus !== "all"
+          ? input.verificationStatus
+          : undefined,
+      page_size: input.pageSize ?? 100,
+    });
+    const payload = await apiRequest<BackendPageResponse<BackendInstitutionPersonListItemResponse>>(
+      `/api/v1/organizations/${orgPublicId}/institution/people${query}`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return {
+      items: payload.items.map(mapInstitutionPersonListItem),
+      total: payload.total,
+    };
+  });
+}
+
+export async function getInstitutionOrganizationPerson(
+  orgPublicId: string,
+  personPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendInstitutionPersonDetailResponse>(
+      `/api/v1/organizations/${orgPublicId}/institution/people/${personPublicId}`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return mapInstitutionPersonDetail(payload);
+  });
+}
+
+export async function getInstitutionOrganizationPersonVerificationHistory(
+  orgPublicId: string,
+  personPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendInstitutionVerificationEventResponse[]>(
+      `/api/v1/organizations/${orgPublicId}/institution/people/${personPublicId}/verification-history`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return payload.map(mapInstitutionVerificationActivity);
+  });
+}
+
+export async function getInstitutionOrganizationPersonCredentials(
+  orgPublicId: string,
+  personPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendInstitutionCredentialResponse[]>(
+      `/api/v1/organizations/${orgPublicId}/institution/people/${personPublicId}/credentials`,
+      {
+        method: "GET",
+      },
+      accessToken,
+    );
+
+    return payload.map(mapInstitutionCredential);
   });
 }
 

@@ -1,13 +1,23 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
-import { getInstitutionPerson } from "@/lib/institution/api";
-import { isInstitutionError } from "@/lib/institution/errors";
+import { type ReactNode } from "react";
+import { ArrowLeft } from "lucide-react";
+import {
+  getInstitutionPerson,
+  getInstitutionPersonCredentials,
+  getInstitutionPersonVerificationHistory,
+} from "@/lib/institution/api";
+import { useInstitutionAuth } from "@/lib/institution/auth";
+import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
+import { formatDate, formatDateTime } from "@/lib/institution/format";
+import { mapCredentialStatusLabel } from "@/lib/institution/people";
+import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import {
   EmptyState,
   ErrorState,
   LoadingState,
+  PermissionDeniedState,
   ServiceUnavailableState,
 } from "@/components/institution/PageStates";
 import {
@@ -16,8 +26,6 @@ import {
   TrustStatusBadge,
 } from "@/components/institution/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { formatDate, formatDateTime } from "@/lib/institution/format";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/institution/people/$personId")({
   component: PersonDetailPage,
@@ -26,19 +34,65 @@ export const Route = createFileRoute("/institution/people/$personId")({
 function PersonDetailPage() {
   const { personId } = Route.useParams();
   const navigate = useNavigate();
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: institutionQueryKeys.person(personId),
-    queryFn: () => getInstitutionPerson(personId),
+  const { session } = useInstitutionAuth();
+  const permissions = getInstitutionPermissions(session);
+  const organizationId = session?.institutionId;
+
+  const detailQuery = useQuery({
+    queryKey: institutionQueryKeys.person(organizationId, personId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionPerson(organizationId, personId);
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople,
   });
 
-  if (isLoading) return <LoadingState />;
-  if (isError && isInstitutionError(error) && error.status === 503) {
-    return (
-      <ServiceUnavailableState title="Person record unavailable" description={error.uiMessage} />
-    );
+  const verificationHistoryQuery = useQuery({
+    queryKey: institutionQueryKeys.personVerificationHistory(organizationId, personId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionPersonVerificationHistory(organizationId, personId);
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
+  });
+
+  const credentialsQuery = useQuery({
+    queryKey: institutionQueryKeys.personCredentials(organizationId, personId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionPersonCredentials(organizationId, personId);
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
+  });
+
+  if (!permissions.canViewPeople) {
+    return <PermissionDeniedState />;
   }
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
-  if (!data)
+
+  if (detailQuery.isLoading) return <LoadingState />;
+
+  if (
+    detailQuery.isError &&
+    isInstitutionError(detailQuery.error) &&
+    detailQuery.error.status === 403
+  ) {
+    return <PermissionDeniedState />;
+  }
+
+  if (
+    detailQuery.isError &&
+    isInstitutionError(detailQuery.error) &&
+    detailQuery.error.status === 404
+  ) {
     return (
       <EmptyState
         title="Person not found"
@@ -50,8 +104,34 @@ function PersonDetailPage() {
         }
       />
     );
+  }
 
-  const p = data;
+  if (
+    detailQuery.isError &&
+    isInstitutionError(detailQuery.error) &&
+    detailQuery.error.status === 503
+  ) {
+    return (
+      <ServiceUnavailableState
+        title="Person record unavailable"
+        description={getInstitutionErrorMessage(detailQuery.error)}
+      />
+    );
+  }
+
+  if (detailQuery.isError) return <ErrorState onRetry={() => detailQuery.refetch()} />;
+
+  if (!detailQuery.data) return null;
+
+  const person = detailQuery.data;
+  const institutionName =
+    person.relationship.institutionName !== "—"
+      ? person.relationship.institutionName
+      : (session?.institutionName ?? "—");
+  const studentId = person.relationship.studentId || person.studentIdMasked || "—";
+  const consentedFields = person.sharedProfile.consentedFields ?? [];
+  const credentials = credentialsQuery.data ?? person.credentials;
+  const verificationHistory = verificationHistoryQuery.data ?? person.verificationActivity;
 
   return (
     <div className="space-y-6">
@@ -64,77 +144,83 @@ function PersonDetailPage() {
 
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-white p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground">{p.name}</h1>
+          <h1 className="text-xl font-semibold text-foreground">{person.name}</h1>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <InstitutionStatusBadge status={p.institutionStatus} />
-            <TrustStatusBadge status={p.trustStatus} />
-            <PassportStatusBadge status={p.passportStatus} />
+            <InstitutionStatusBadge status={person.institutionStatus} />
+            <TrustStatusBadge status={person.trustStatus} />
+            <PassportStatusBadge status={person.passportStatus} />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground">
-          Last updated {formatDate(p.lastUpdated)}
-        </div>
+        {person.lastUpdated ? (
+          <div className="text-xs text-muted-foreground">
+            Last updated {formatDate(person.lastUpdated)}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Institution relationship">
           <dl className="grid grid-cols-2 gap-3 text-sm">
-            <FieldCell label="Institution" value={p.relationship.institutionName} />
-            <FieldCell label="Student ID" value={p.relationship.studentId} />
-            <FieldCell label="Degree" value={p.relationship.degree} />
-            <FieldCell label="Programme" value={p.relationship.programme} />
-            <FieldCell label="Department" value={p.relationship.department} />
-            <FieldCell label="Admission" value={p.relationship.admissionPeriod} />
-            <FieldCell label="Graduation" value={p.relationship.graduationPeriod} />
-            <FieldCell label="Verification" value={<TrustStatusBadge status={p.trustStatus} />} />
+            <FieldCell label="Institution" value={institutionName} />
+            <FieldCell label="Student ID" value={studentId} />
+            <FieldCell label="Degree" value={person.relationship.degree} />
+            <FieldCell label="Programme" value={person.relationship.programme} />
+            <FieldCell label="Department" value={person.relationship.department} />
+            <FieldCell label="Admission" value={person.relationship.admissionPeriod} />
+            <FieldCell label="Graduation" value={person.relationship.graduationPeriod} />
+            <FieldCell
+              label="Verification"
+              value={<TrustStatusBadge status={person.trustStatus} />}
+            />
           </dl>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => toast("Correction flow (mock)")}>
-              Correct institution-owned information
-            </Button>
-          </div>
+          <p className="mt-3 rounded-md border border-border bg-secondary/50 p-2 text-xs text-muted-foreground">
+            Institution relationship fields are provided directly by the backend institution
+            projection for this workspace.
+          </p>
         </Section>
 
         <Section title="Shared professional profile">
-          {p.sharedProfile.consented ? (
+          {person.sharedProfile.consented ? (
             <>
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <FieldCell
                   label="Current title"
-                  value={p.sharedProfile.currentTitle ?? "Not available"}
+                  value={person.sharedProfile.currentTitle ?? "Not available"}
                 />
                 <FieldCell
                   label="Current company"
-                  value={p.sharedProfile.currentCompany ?? "Not available"}
+                  value={person.sharedProfile.currentCompany ?? "Not available"}
                 />
-                <FieldCell label="Industry" value={p.sharedProfile.industry ?? "Not available"} />
-                <FieldCell label="Location" value={p.sharedProfile.location ?? "Not available"} />
               </dl>
-              {(p.sharedProfile.credentials ?? []).length > 0 && (
-                <div className="mt-3">
-                  <div className="text-xs text-muted-foreground">Verified credentials</div>
+              <div className="mt-3">
+                <div className="text-xs text-muted-foreground">Consented fields</div>
+                {consentedFields.length === 0 ? (
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    No active professional fields.
+                  </div>
+                ) : (
                   <ul className="mt-1 flex flex-wrap gap-1.5">
-                    {p.sharedProfile.credentials!.map((c) => (
+                    {consentedFields.map((field) => (
                       <li
-                        key={c.name}
-                        className="inline-flex items-center gap-1 rounded-full bg-[color:var(--kairo-teal-soft)] px-2 py-0.5 text-xs font-medium text-[color:var(--kairo-navy-deep)]"
+                        key={field}
+                        className="inline-flex items-center rounded-full bg-[color:var(--kairo-teal-soft)] px-2 py-0.5 text-xs font-medium text-[color:var(--kairo-navy-deep)]"
                       >
-                        <ShieldCheck className="h-3 w-3" /> {c.name}
+                        {field === "current_title" ? "Current title" : "Current company"}
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
+                )}
+              </div>
               <p className="mt-3 rounded-md border border-border bg-secondary/50 p-2 text-xs text-muted-foreground">
-                This information is shared by the individual through Kairo and may be withdrawn or
-                updated by them.
+                The backend returns only the professional fields this person has actively consented
+                to share with your institution.
               </p>
             </>
           ) : (
             <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
               <div className="font-medium">Not shared</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                This person has not shared their current professional information with your
+                This person has not shared any current professional information with your
                 institution.
               </p>
             </div>
@@ -143,53 +229,55 @@ function PersonDetailPage() {
       </div>
 
       <Section title="Institution credentials">
-        {p.credentials.length === 0 ? (
+        {credentialsQuery.isLoading ? (
+          <LoadingState />
+        ) : credentialsQuery.isError ? (
+          <div className="text-sm text-muted-foreground">
+            Credential history is unavailable right now.
+          </div>
+        ) : credentials.length === 0 ? (
           <div className="text-sm text-muted-foreground">No credentials on file.</div>
         ) : (
           <ul className="divide-y divide-border">
-            {p.credentials.map((c) => (
-              <li
-                key={c.id}
-                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="text-sm font-medium">{c.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Issued {c.issueDate} · Updated {c.lastUpdated}
-                    {c.revokedReason ? ` · ${c.revokedReason}` : ""}
+            {credentials.map((credential) => (
+              <li key={credential.id} className="flex flex-col gap-3 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium">{credential.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {credential.credentialType}
+                      {credential.credentialNumber ? ` · ${credential.credentialNumber}` : ""}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Issued {credential.issuePeriod ?? credential.issueDate}
+                      {credential.programme ? ` · ${credential.programme}` : ""}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                      c.status === "verified"
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                      credential.status === "issued" || credential.status === "verified"
                         ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                        : c.status === "revoked"
+                        : credential.status === "revoked"
                           ? "bg-slate-100 text-slate-700 ring-slate-200"
-                          : c.status === "corrected"
-                            ? "bg-sky-50 text-sky-800 ring-sky-200"
-                            : "bg-amber-50 text-amber-800 ring-amber-200"
+                          : "bg-amber-50 text-amber-800 ring-amber-200"
                     }`}
                   >
-                    {c.status[0].toUpperCase() + c.status.slice(1)}
+                    {mapCredentialStatusLabel(credential.status)}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toast("View credential (mock)")}
-                  >
-                    View
-                  </Button>
-                  {c.status !== "revoked" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => toast("Revocation flow (mock)")}
-                    >
-                      Revoke
-                    </Button>
-                  )}
                 </div>
+                {credential.history.length > 0 && (
+                  <ol className="space-y-2 border-l border-border pl-4">
+                    {credential.history.map((event) => (
+                      <li
+                        key={`${credential.id}-${event.at}-${event.label}`}
+                        className="text-xs text-muted-foreground"
+                      >
+                        <div className="font-medium text-foreground">{event.label}</div>
+                        <div>{formatDateTime(event.at)}</div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </li>
             ))}
           </ul>
@@ -197,30 +285,38 @@ function PersonDetailPage() {
       </Section>
 
       <Section title="Verification activity">
-        {p.verificationActivity.length === 0 ? (
+        {verificationHistoryQuery.isLoading ? (
+          <LoadingState />
+        ) : verificationHistoryQuery.isError ? (
+          <div className="text-sm text-muted-foreground">
+            Verification history is unavailable right now.
+          </div>
+        ) : verificationHistory.length === 0 ? (
           <div className="text-sm text-muted-foreground">No verification requests yet.</div>
         ) : (
           <ul className="divide-y divide-border">
-            {p.verificationActivity.map((v) => (
-              <li key={v.id} className="flex items-center justify-between py-2 text-sm">
+            {verificationHistory.map((event) => (
+              <li key={event.id} className="flex items-center justify-between py-2 text-sm">
                 <div>
-                  <div className="font-medium">{v.requestingOrg}</div>
+                  <div className="font-medium">{event.requestingOrg}</div>
                   <div className="text-xs text-muted-foreground">
-                    {formatDate(v.date)} · Reviewer: {v.reviewer}
+                    {formatDateTime(event.date)} · Source: {event.reviewer}
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{v.result}</span>
-                  {v.requestId && (
-                    <Link
-                      to="/institution/verifications/$requestId"
-                      params={{ requestId: v.requestId }}
-                      className="text-xs font-medium text-[color:var(--kairo-navy)] hover:underline"
-                    >
-                      Open
-                    </Link>
+                  {(event.previousStatus || event.newStatus) && (
+                    <div className="text-xs text-muted-foreground">
+                      {event.previousStatus ?? "—"} to {event.newStatus ?? "—"}
+                    </div>
                   )}
                 </div>
+                {event.requestId ? (
+                  <Link
+                    to="/institution/verifications/$requestId"
+                    params={{ requestId: event.requestId }}
+                    className="text-xs font-medium text-[color:var(--kairo-navy)] hover:underline"
+                  >
+                    Open
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -228,23 +324,30 @@ function PersonDetailPage() {
       </Section>
 
       <Section title="Activity timeline">
-        <ol className="space-y-3">
-          {p.timeline.map((t) => (
-            <li key={t.id} className="flex gap-3 text-sm">
-              <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[color:var(--kairo-teal)]" />
-              <div>
-                <div className="font-medium">{t.label}</div>
-                <div className="text-xs text-muted-foreground">{formatDateTime(t.at)}</div>
-              </div>
-            </li>
-          ))}
-        </ol>
+        {person.timeline.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No lifecycle events recorded yet.</div>
+        ) : (
+          <ol className="space-y-3">
+            {person.timeline.map((event) => (
+              <li key={event.id} className="flex gap-3 text-sm">
+                <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[color:var(--kairo-teal)]" />
+                <div>
+                  <div className="font-medium">{event.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDateTime(event.at)}
+                    {event.detail ? ` · ${event.detail}` : ""}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
       </Section>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-white p-5 shadow-sm">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -255,7 +358,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function FieldCell({ label, value }: { label: string; value: React.ReactNode }) {
+function FieldCell({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>

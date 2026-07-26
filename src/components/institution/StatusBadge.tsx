@@ -72,6 +72,12 @@ const trustLabels: Record<TrustStatus, string> = {
   pending: "Pending Verification",
   disputed: "Disputed",
   revoked: "Revoked",
+  not_started: "Not Started",
+  verified: "Verified",
+  discrepancy: "Discrepancy Found",
+  clarification_required: "Clarification Required",
+  rejected: "Rejected",
+  expired: "Expired",
 };
 
 const trustTones: Record<TrustStatus, string> = {
@@ -79,6 +85,12 @@ const trustTones: Record<TrustStatus, string> = {
   pending: "bg-amber-50 text-amber-800 ring-amber-200",
   disputed: "bg-rose-50 text-rose-800 ring-rose-200",
   revoked: "bg-slate-100 text-slate-700 ring-slate-200",
+  not_started: "bg-slate-100 text-slate-700 ring-slate-200",
+  verified: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  discrepancy: "bg-rose-50 text-rose-800 ring-rose-200",
+  clarification_required: "bg-violet-50 text-violet-800 ring-violet-200",
+  rejected: "bg-rose-50 text-rose-800 ring-rose-200",
+  expired: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
 export function TrustStatusBadge({ status }: { status: TrustStatus }) {

@@ -48,9 +48,24 @@ export type MatchStatus = "exact" | "partial" | "no_match" | "record_unavailable
 
 export type InstitutionStatus = "current_student" | "alumni" | "withdrawn" | "inactive";
 
-export type TrustStatus = "institution_verified" | "pending" | "disputed" | "revoked";
+export type TrustStatus =
+  | "institution_verified"
+  | "pending"
+  | "disputed"
+  | "revoked"
+  | "not_started"
+  | "verified"
+  | "discrepancy"
+  | "clarification_required"
+  | "rejected"
+  | "expired";
 
 export type PassportStatus = "connected" | "not_connected" | "sharing_limited";
+
+export type ProfessionalField = "current_title" | "current_employer";
+
+export type InstitutionCredentialStatus =
+  "verified" | "pending" | "corrected" | "revoked" | "issued" | "superseded";
 
 export type Role = "owner" | "admin" | "reviewer" | "member";
 
@@ -176,16 +191,30 @@ export interface SharedProfessionalProfile {
   location?: string;
   credentials?: { name: string; verifiedAt: string }[];
   lastUpdated?: string;
+  fields?: {
+    field: ProfessionalField;
+    value: string;
+    consentedAt: string;
+    expiresAt?: string | null;
+  }[];
+  consentedFields?: ProfessionalField[];
 }
 
 export interface InstitutionCredential {
   id: string;
   name: string;
-  status: "verified" | "pending" | "corrected" | "revoked";
+  status: InstitutionCredentialStatus;
   issueDate: string;
   lastUpdated: string;
   history: { at: string; label: string }[];
   revokedReason?: string;
+  credentialType?: string;
+  degree?: string;
+  programme?: string;
+  department?: string;
+  issuePeriod?: string;
+  credentialNumber?: string | null;
+  version?: number;
 }
 
 export interface InstitutionRelationship {
@@ -208,6 +237,8 @@ export interface Person {
   passportStatus: PassportStatus;
   degree: string;
   graduationYear: string;
+  activeVerificationCount?: number;
+  studentIdMasked?: string;
   relationship: InstitutionRelationship;
   sharedProfile: SharedProfessionalProfile;
   credentials: InstitutionCredential[];
@@ -219,9 +250,17 @@ export interface Person {
     reviewer: string;
     status: VerificationStatus;
     requestId?: string;
+    eventSource?: string;
+    previousStatus?: string | null;
+    newStatus?: string | null;
   }[];
   timeline: TimelineEvent[];
-  lastUpdated: string;
+  lastUpdated?: string;
+}
+
+export interface InstitutionPeopleDirectory {
+  items: Person[];
+  total: number;
 }
 
 export interface TeamMember {

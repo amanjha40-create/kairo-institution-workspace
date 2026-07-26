@@ -7,8 +7,16 @@ export const institutionQueryKeys = {
     ["institution", "verification", requestId, "evidence"] as const,
   verificationTimeline: (requestId: string) =>
     ["institution", "verification", requestId, "timeline"] as const,
-  people: () => ["institution", "people"] as const,
-  person: (personId: string) => ["institution", "person", personId] as const,
+  people: (
+    organizationId?: string,
+    filters?: Record<string, string | number | boolean | undefined>,
+  ) => ["institution", "people", organizationId ?? "none", filters ?? {}] as const,
+  person: (organizationId: string | undefined, personId: string) =>
+    ["institution", "person", organizationId ?? "none", personId] as const,
+  personVerificationHistory: (organizationId: string | undefined, personId: string) =>
+    ["institution", "person", organizationId ?? "none", personId, "verification-history"] as const,
+  personCredentials: (organizationId: string | undefined, personId: string) =>
+    ["institution", "person", organizationId ?? "none", personId, "credentials"] as const,
   team: (organizationId?: string) => ["institution", "team", organizationId ?? "none"] as const,
   settings: () => ["institution", "settings"] as const,
   magicLink: (token: string) => ["institution", "magic-link", token] as const,

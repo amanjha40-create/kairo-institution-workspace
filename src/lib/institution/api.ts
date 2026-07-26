@@ -3,6 +3,10 @@ import {
   assignInstitutionVerificationReviewer,
   cancelInstitutionOrganizationInvitation,
   createInstitutionOrganizationInvitation,
+  getInstitutionOrganizationPeople as fetchInstitutionOrganizationPeople,
+  getInstitutionOrganizationPerson,
+  getInstitutionOrganizationPersonCredentials,
+  getInstitutionOrganizationPersonVerificationHistory,
   getInstitutionOrganizationVerificationRequests as fetchInstitutionOrganizationVerificationRequests,
   getInstitutionOrganizationTeam,
   getInstitutionVerificationEvidence,
@@ -30,6 +34,7 @@ import {
 import { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } from "./mock-data";
 import type {
   EvidenceFile,
+  InstitutionPeopleDirectory,
   InstitutionTeam,
   InstitutionSettings,
   InternalNote,
@@ -65,8 +70,25 @@ interface InstitutionRepository {
     requestId: string,
     organizationMemberId?: string,
   ) => Promise<VerificationRequest | undefined>;
-  getPeople: () => Promise<Person[]>;
-  getPerson: (id: string) => Promise<Person | undefined>;
+  getPeople: (
+    organizationId: string,
+    filters?: {
+      search?: string;
+      lifecycleStatus?: Person["institutionStatus"] | "all";
+      programme?: string;
+      department?: string;
+      graduationPeriod?: string;
+      studentId?: string;
+      verificationStatus?: string | "all";
+      pageSize?: number;
+    },
+  ) => Promise<InstitutionPeopleDirectory>;
+  getPerson: (organizationId: string, id: string) => Promise<Person | undefined>;
+  getPersonVerificationHistory: (
+    organizationId: string,
+    id: string,
+  ) => Promise<Person["verificationActivity"]>;
+  getPersonCredentials: (organizationId: string, id: string) => Promise<Person["credentials"]>;
   getTeam: (organizationId: string) => Promise<InstitutionTeam>;
   getSettings: () => Promise<InstitutionSettings>;
   inviteTeamMember: (
@@ -320,10 +342,29 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(requests[idx]));
     },
     async getPeople() {
-      return delay(cloneFixture(people));
+      return delay({
+        items: cloneFixture(people),
+        total: people.length,
+      });
     },
-    async getPerson(id) {
+    async getPerson(_organizationId, id) {
       return delay(cloneFixture(people.find((person) => person.id === id)));
+    },
+    async getPersonVerificationHistory(_organizationId, id) {
+      const person = people.find((candidate) => candidate.id === id);
+      if (!person) {
+        throw notFoundError("This person could not be found.");
+      }
+
+      return delay(cloneFixture(person.verificationActivity));
+    },
+    async getPersonCredentials(_organizationId, id) {
+      const person = people.find((candidate) => candidate.id === id);
+      if (!person) {
+        throw notFoundError("This person could not be found.");
+      }
+
+      return delay(cloneFixture(person.credentials));
     },
     async getTeam() {
       return delay(
@@ -510,6 +551,12 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getPerson() {
       assertInstitutionBackend("Institution people");
     },
+    async getPersonVerificationHistory() {
+      assertInstitutionBackend("Institution people");
+    },
+    async getPersonCredentials() {
+      assertInstitutionBackend("Institution people");
+    },
     async getTeam() {
       assertInstitutionBackend("Institution team");
     },
@@ -589,6 +636,18 @@ function backendInstitutionRepository(): InstitutionRepository {
       return assignInstitutionVerificationReviewer(requestId, {
         organizationMemberPublicId: organizationMemberId,
       });
+    },
+    async getPeople(organizationId, filters) {
+      return fetchInstitutionOrganizationPeople(organizationId, filters);
+    },
+    async getPerson(organizationId, id) {
+      return getInstitutionOrganizationPerson(organizationId, id);
+    },
+    async getPersonVerificationHistory(organizationId, id) {
+      return getInstitutionOrganizationPersonVerificationHistory(organizationId, id);
+    },
+    async getPersonCredentials(organizationId, id) {
+      return getInstitutionOrganizationPersonCredentials(organizationId, id);
     },
     async getTeam(organizationId) {
       return getInstitutionOrganizationTeam(organizationId);
@@ -747,12 +806,41 @@ export async function assignInstitutionVerificationRequestReviewer(
   return institutionRepository.assignVerificationReviewer(requestId, organizationMemberId);
 }
 
-export async function getInstitutionPeople(): Promise<Person[]> {
-  return institutionRepository.getPeople();
+export async function getInstitutionPeople(
+  organizationId: string,
+  filters?: {
+    search?: string;
+    lifecycleStatus?: Person["institutionStatus"] | "all";
+    programme?: string;
+    department?: string;
+    graduationPeriod?: string;
+    studentId?: string;
+    verificationStatus?: string | "all";
+    pageSize?: number;
+  },
+): Promise<InstitutionPeopleDirectory> {
+  return institutionRepository.getPeople(organizationId, filters);
 }
 
-export async function getInstitutionPerson(id: string): Promise<Person | undefined> {
-  return institutionRepository.getPerson(id);
+export async function getInstitutionPerson(
+  organizationId: string,
+  id: string,
+): Promise<Person | undefined> {
+  return institutionRepository.getPerson(organizationId, id);
+}
+
+export async function getInstitutionPersonVerificationHistory(
+  organizationId: string,
+  id: string,
+): Promise<Person["verificationActivity"]> {
+  return institutionRepository.getPersonVerificationHistory(organizationId, id);
+}
+
+export async function getInstitutionPersonCredentials(
+  organizationId: string,
+  id: string,
+): Promise<Person["credentials"]> {
+  return institutionRepository.getPersonCredentials(organizationId, id);
 }
 
 export async function getInstitutionTeam(organizationId: string): Promise<InstitutionTeam> {
