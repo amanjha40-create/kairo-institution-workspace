@@ -40,7 +40,6 @@ import {
   serviceUnavailableError,
   unauthorizedError,
 } from "./errors";
-import { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } from "./mock-data";
 import { buildInstitutionNotificationPreferencePayload } from "./settings";
 import type {
   EvidenceFile,
@@ -164,26 +163,58 @@ const delay = <T>(value: T, ms = 120): Promise<T> =>
 
 const cloneFixture = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-const requests: VerificationRequest[] = cloneFixture(mockRequests);
-const people: Person[] = cloneFixture(mockPeople);
-let team: TeamMember[] = cloneFixture(mockTeam);
-let settings: InstitutionSettings = cloneFixture(mockSettings);
-const magicLinks = cloneFixture(mockMagicLinks);
-
-function getDemoTeamMembers() {
-  return team.filter((member) => member.status !== "pending");
+interface DemoInstitutionState {
+  requests: VerificationRequest[];
+  people: Person[];
+  team: TeamMember[];
+  settings: InstitutionSettings;
+  magicLinks: Record<string, MagicLinkRequest>;
+  invitedByEmail: string | null;
+  invitedByName: string | null;
 }
 
-function getDemoTeamInvitations(): TeamInvitation[] {
-  return team
+const loadDemoFixtures =
+  import.meta.env.VITE_DEMO_MODE === "true" ? () => import("./mock-data") : null;
+
+let demoInstitutionState: DemoInstitutionState | null = null;
+
+async function getDemoInstitutionState(): Promise<DemoInstitutionState> {
+  if (!loadDemoFixtures) {
+    throw unauthorizedError();
+  }
+
+  if (!demoInstitutionState) {
+    const { mockMagicLinks, mockPeople, mockRequests, mockSettings, mockTeam } =
+      await loadDemoFixtures();
+
+    demoInstitutionState = {
+      requests: cloneFixture(mockRequests),
+      people: cloneFixture(mockPeople),
+      team: cloneFixture(mockTeam),
+      settings: cloneFixture(mockSettings),
+      magicLinks: cloneFixture(mockMagicLinks),
+      invitedByEmail: mockTeam[0]?.email ?? null,
+      invitedByName: mockTeam[0]?.name ?? null,
+    };
+  }
+
+  return demoInstitutionState;
+}
+
+function getDemoTeamMembers(state: DemoInstitutionState) {
+  return state.team.filter((member) => member.status !== "pending");
+}
+
+function getDemoTeamInvitations(state: DemoInstitutionState): TeamInvitation[] {
+  return state.team
     .filter((member) => member.status === "pending")
     .map((member) => ({
       id: member.id,
       email: member.email,
       role: member.role === "owner" ? "reviewer" : member.role,
       status: "pending" as const,
-      invitedByEmail: mockTeam[0]?.email ?? null,
-      invitedByName: mockTeam[0]?.name ?? null,
+      invitedByEmail: state.invitedByEmail,
+      invitedByName: state.invitedByName,
       invitedAt: new Date("2026-07-20T09:00:00Z").toISOString(),
       expiresAt: new Date("2026-07-27T09:00:00Z").toISOString(),
       acceptedAt: null,
@@ -230,17 +261,17 @@ function assertDemoMode(feature: string) {
   }
 }
 
-function findRequestIndex(id: string) {
-  return requests.findIndex((request) => request.id === id);
+function findRequestIndex(state: DemoInstitutionState, id: string) {
+  return state.requests.findIndex((request) => request.id === id);
 }
 
-function assertMutableRequest(id: string) {
-  const idx = findRequestIndex(id);
+function assertMutableRequest(state: DemoInstitutionState, id: string) {
+  const idx = findRequestIndex(state, id);
   if (idx === -1) {
     throw notFoundError("This verification request could not be found.");
   }
 
-  const request = requests[idx];
+  const request = state.requests[idx];
   if (["confirmed", "discrepancy", "closed"].includes(request.status)) {
     throw conflictError("This verification request has already been completed.");
   }
@@ -248,8 +279,8 @@ function assertMutableRequest(id: string) {
   return { idx, request };
 }
 
-function assertMagicLinkUsable(token: string) {
-  const record = magicLinks[token];
+function assertMagicLinkUsable(state: DemoInstitutionState, token: string) {
+  const record = state.magicLinks[token];
   if (!record) {
     throw notFoundError("This verification link is invalid.");
   }
@@ -265,13 +296,16 @@ function assertMagicLinkUsable(token: string) {
 function demoInstitutionRepository(): InstitutionRepository {
   return {
     async getVerificationRequests() {
-      return delay(cloneFixture(requests));
+      const state = await getDemoInstitutionState();
+      return delay(cloneFixture(state.requests));
     },
     async getVerificationRequest(id) {
-      return delay(cloneFixture(requests.find((request) => request.id === id)));
+      const state = await getDemoInstitutionState();
+      return delay(cloneFixture(state.requests.find((request) => request.id === id)));
     },
     async getVerificationEvidence(id) {
-      const request = requests.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const request = state.requests.find((candidate) => candidate.id === id);
       if (!request) {
         throw notFoundError("This verification request could not be found.");
       }
@@ -279,7 +313,8 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(request.evidence));
     },
     async getVerificationTimeline(id) {
-      const request = requests.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const request = state.requests.find((candidate) => candidate.id === id);
       if (!request) {
         throw notFoundError("This verification request could not be found.");
       }
@@ -287,16 +322,17 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(request.timeline));
     },
     async respondToVerification(id, action, payload) {
-      const { idx } = assertMutableRequest(id);
+      const state = await getDemoInstitutionState();
+      const { idx } = assertMutableRequest(state, id);
       const now = new Date().toISOString();
       const status: VerificationStatus = action === "confirm" ? "confirmed" : "discrepancy";
       const label = action === "confirm" ? "Verification confirmed" : "Discrepancy reported";
 
-      requests[idx] = {
-        ...requests[idx],
+      state.requests[idx] = {
+        ...state.requests[idx],
         status,
         timeline: [
-          ...requests[idx].timeline,
+          ...state.requests[idx].timeline,
           {
             id: `timeline_${Date.now()}`,
             at: now,
@@ -306,17 +342,18 @@ function demoInstitutionRepository(): InstitutionRepository {
         ],
       };
 
-      return delay(cloneFixture(requests[idx]));
+      return delay(cloneFixture(state.requests[idx]));
     },
     async requestClarification(id, payload) {
-      const { idx } = assertMutableRequest(id);
+      const state = await getDemoInstitutionState();
+      const { idx } = assertMutableRequest(state, id);
       const now = new Date().toISOString();
 
-      requests[idx] = {
-        ...requests[idx],
+      state.requests[idx] = {
+        ...state.requests[idx],
         status: "awaiting_clarification",
         timeline: [
-          ...requests[idx].timeline,
+          ...state.requests[idx].timeline,
           {
             id: `timeline_${Date.now()}`,
             at: now,
@@ -326,18 +363,19 @@ function demoInstitutionRepository(): InstitutionRepository {
         ],
       };
 
-      return delay(cloneFixture(requests[idx]));
+      return delay(cloneFixture(state.requests[idx]));
     },
     async addInternalNote(id, author, body) {
-      const idx = findRequestIndex(id);
+      const state = await getDemoInstitutionState();
+      const idx = findRequestIndex(state, id);
       if (idx === -1) {
         throw notFoundError("This verification request could not be found.");
       }
 
-      requests[idx] = {
-        ...requests[idx],
+      state.requests[idx] = {
+        ...state.requests[idx],
         internalNotes: [
-          ...requests[idx].internalNotes,
+          ...state.requests[idx].internalNotes,
           {
             id: `note_${Date.now()}`,
             author,
@@ -347,26 +385,27 @@ function demoInstitutionRepository(): InstitutionRepository {
         ],
       };
 
-      return delay(cloneFixture(requests[idx]));
+      return delay(cloneFixture(state.requests[idx]));
     },
     async assignVerificationReviewer(requestId, organizationMemberId) {
-      const idx = findRequestIndex(requestId);
+      const state = await getDemoInstitutionState();
+      const idx = findRequestIndex(state, requestId);
       if (idx === -1) {
         throw notFoundError("This verification request could not be found.");
       }
 
-      const assignee = team.find(
+      const assignee = state.team.find(
         (candidate) =>
           candidate.id === organizationMemberId &&
           candidate.status === "active" &&
           candidate.role !== "member",
       );
 
-      requests[idx] = {
-        ...requests[idx],
+      state.requests[idx] = {
+        ...state.requests[idx],
         assignedTo: assignee?.name,
         timeline: [
-          ...requests[idx].timeline,
+          ...state.requests[idx].timeline,
           {
             id: `timeline_${Date.now()}`,
             at: new Date().toISOString(),
@@ -376,19 +415,22 @@ function demoInstitutionRepository(): InstitutionRepository {
         ],
       };
 
-      return delay(cloneFixture(requests[idx]));
+      return delay(cloneFixture(state.requests[idx]));
     },
     async getPeople() {
+      const state = await getDemoInstitutionState();
       return delay({
-        items: cloneFixture(people),
-        total: people.length,
+        items: cloneFixture(state.people),
+        total: state.people.length,
       });
     },
     async getPerson(_organizationId, id) {
-      return delay(cloneFixture(people.find((person) => person.id === id)));
+      const state = await getDemoInstitutionState();
+      return delay(cloneFixture(state.people.find((person) => person.id === id)));
     },
     async getPersonVerificationHistory(_organizationId, id) {
-      const person = people.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const person = state.people.find((candidate) => candidate.id === id);
       if (!person) {
         throw notFoundError("This person could not be found.");
       }
@@ -396,7 +438,8 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(person.verificationActivity));
     },
     async getPersonCredentials(_organizationId, id) {
-      const person = people.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const person = state.people.find((candidate) => candidate.id === id);
       if (!person) {
         throw notFoundError("This person could not be found.");
       }
@@ -404,66 +447,73 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(person.credentials));
     },
     async getTeam() {
+      const state = await getDemoInstitutionState();
       return delay(
         cloneFixture({
-          members: getDemoTeamMembers(),
-          invitations: getDemoTeamInvitations(),
+          members: getDemoTeamMembers(state),
+          invitations: getDemoTeamInvitations(state),
         }),
       );
     },
     async getSettings() {
-      return delay(cloneFixture(settings));
+      const state = await getDemoInstitutionState();
+      return delay(cloneFixture(state.settings));
     },
     async updateInstitutionProfile(_organizationId, payload) {
-      settings = {
-        ...settings,
+      const state = await getDemoInstitutionState();
+      state.settings = {
+        ...state.settings,
         institution: {
-          ...settings.institution,
-          name: payload.name ?? settings.institution.name,
-          website: payload.website ?? settings.institution.website,
-          location: payload.location ?? settings.institution.location ?? null,
-          address: payload.location ?? settings.institution.address,
-          workEmail: payload.workEmail ?? settings.institution.workEmail ?? null,
+          ...state.settings.institution,
+          name: payload.name ?? state.settings.institution.name,
+          website: payload.website ?? state.settings.institution.website,
+          location: payload.location ?? state.settings.institution.location ?? null,
+          address: payload.location ?? state.settings.institution.address,
+          workEmail: payload.workEmail ?? state.settings.institution.workEmail ?? null,
           primaryVerificationEmail:
-            payload.workEmail ?? settings.institution.primaryVerificationEmail,
-          domain: payload.domain ?? settings.institution.domain,
+            payload.workEmail ?? state.settings.institution.primaryVerificationEmail,
+          domain: payload.domain ?? state.settings.institution.domain,
         },
       };
-      return delay(cloneFixture(settings.institution));
+      return delay(cloneFixture(state.settings.institution));
     },
     async updateAccountProfile(payload) {
-      settings = {
-        ...settings,
+      const state = await getDemoInstitutionState();
+      state.settings = {
+        ...state.settings,
         account: {
-          ...settings.account,
-          fullName: payload.fullName ?? settings.account.fullName,
-          phone: payload.phone ?? settings.account.phone ?? null,
-          currentRole: payload.currentRole ?? settings.account.currentRole ?? null,
-          location: payload.location ?? settings.account.location ?? null,
+          ...state.settings.account,
+          fullName: payload.fullName ?? state.settings.account.fullName,
+          phone: payload.phone ?? state.settings.account.phone ?? null,
+          currentRole: payload.currentRole ?? state.settings.account.currentRole ?? null,
+          location: payload.location ?? state.settings.account.location ?? null,
         },
       };
-      return delay(cloneFixture(settings.account));
+      return delay(cloneFixture(state.settings.account));
     },
     async updateNotificationPreferences(preferences) {
-      settings = {
-        ...settings,
+      const state = await getDemoInstitutionState();
+      state.settings = {
+        ...state.settings,
         notifications: cloneFixture(preferences).map((preference) => ({
           ...preference,
           enabled: preference.required ? true : preference.enabled,
         })),
       };
-      return delay(cloneFixture(settings.notifications));
+      return delay(cloneFixture(state.settings.notifications));
     },
     async revokeAccountSession(sessionId) {
-      settings = {
-        ...settings,
-        sessions: settings.sessions.filter((session) => session.id !== sessionId),
+      const state = await getDemoInstitutionState();
+      state.settings = {
+        ...state.settings,
+        sessions: state.settings.sessions.filter((session) => session.id !== sessionId),
       };
       return delay(undefined);
     },
     async revokeAllAccountSessions() {
-      settings = {
-        ...settings,
+      const state = await getDemoInstitutionState();
+      state.settings = {
+        ...state.settings,
         sessions: [],
       };
       return delay(undefined);
@@ -473,6 +523,7 @@ function demoInstitutionRepository(): InstitutionRepository {
     },
     async inviteTeamMember(_organizationId, email, role) {
       assertTeamManageable();
+      const state = await getDemoInstitutionState();
       const invitation: TeamMember = {
         id: `invite_${Date.now()}`,
         name: email.split("@")[0],
@@ -480,8 +531,8 @@ function demoInstitutionRepository(): InstitutionRepository {
         role,
         status: "pending",
       };
-      team = [...team, invitation];
-      const createdInvitation = getDemoTeamInvitations().find(
+      state.team = [...state.team, invitation];
+      const createdInvitation = getDemoTeamInvitations(state).find(
         (candidate) => candidate.id === invitation.id,
       );
       if (!createdInvitation) {
@@ -491,7 +542,8 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(cloneFixture(createdInvitation));
     },
     async resendTeamInvitation(_organizationId, id) {
-      const invitation = getDemoTeamInvitations().find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const invitation = getDemoTeamInvitations(state).find((candidate) => candidate.id === id);
       if (!invitation) {
         throw notFoundError("This invitation could not be found.");
       }
@@ -505,22 +557,23 @@ function demoInstitutionRepository(): InstitutionRepository {
       );
     },
     async cancelTeamInvitation(_organizationId, id) {
-      const invitation = team.find(
+      const state = await getDemoInstitutionState();
+      const invitation = state.team.find(
         (candidate) => candidate.id === id && candidate.status === "pending",
       );
       if (!invitation) {
         throw notFoundError("This invitation could not be found.");
       }
 
-      team = team.filter((candidate) => candidate.id !== id);
+      state.team = state.team.filter((candidate) => candidate.id !== id);
       return delay(
         cloneFixture({
           id,
           email: invitation.email,
           role: invitation.role === "owner" ? "reviewer" : invitation.role,
           status: "cancelled" as const,
-          invitedByEmail: mockTeam[0]?.email ?? null,
-          invitedByName: mockTeam[0]?.name ?? null,
+          invitedByEmail: state.invitedByEmail,
+          invitedByName: state.invitedByName,
           invitedAt: new Date("2026-07-20T09:00:00Z").toISOString(),
           expiresAt: new Date("2026-07-27T09:00:00Z").toISOString(),
           acceptedAt: null,
@@ -530,7 +583,8 @@ function demoInstitutionRepository(): InstitutionRepository {
       );
     },
     async updateTeamMemberRole(_organizationId, id, role) {
-      const member = team.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const member = state.team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
@@ -539,53 +593,57 @@ function demoInstitutionRepository(): InstitutionRepository {
         throw forbiddenError("Owner changes must use the dedicated ownership transfer flow.");
       }
 
-      const nextTeam = team.map((candidate) =>
+      const nextTeam = state.team.map((candidate) =>
         candidate.id === id ? { ...candidate, role } : candidate,
       );
 
-      team = nextTeam;
-      return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
+      state.team = nextTeam;
+      return delay(cloneFixture(state.team.find((candidate) => candidate.id === id)));
     },
     async suspendTeamMember(_organizationId, id) {
-      const member = team.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const member = state.team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
 
-      const nextTeam = team.map((candidate) =>
+      const nextTeam = state.team.map((candidate) =>
         candidate.id === id ? { ...candidate, status: "suspended" as const } : candidate,
       );
       assertFinalOwnerStillActive(nextTeam);
-      team = nextTeam;
-      return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
+      state.team = nextTeam;
+      return delay(cloneFixture(state.team.find((candidate) => candidate.id === id)));
     },
     async restoreTeamMember(_organizationId, id) {
-      const member = team.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const member = state.team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
 
-      team = team.map((candidate) =>
+      state.team = state.team.map((candidate) =>
         candidate.id === id ? { ...candidate, status: "active" as const } : candidate,
       );
-      return delay(cloneFixture(team.find((candidate) => candidate.id === id)));
+      return delay(cloneFixture(state.team.find((candidate) => candidate.id === id)));
     },
     async removeTeamMember(_organizationId, id) {
-      const member = team.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const member = state.team.find((candidate) => candidate.id === id);
       if (!member) {
         throw notFoundError("This team member could not be found.");
       }
 
-      const nextTeam = team.filter((candidate) => candidate.id !== id);
+      const nextTeam = state.team.filter((candidate) => candidate.id !== id);
       if (member.role === "owner" && member.status === "active") {
         assertFinalOwnerStillActive(nextTeam);
       }
 
-      team = nextTeam;
+      state.team = nextTeam;
       return delay(undefined);
     },
     async transferTeamOwnership(_organizationId, id) {
-      const target = team.find((candidate) => candidate.id === id);
+      const state = await getDemoInstitutionState();
+      const target = state.team.find((candidate) => candidate.id === id);
       if (!target) {
         throw notFoundError("This team member could not be found.");
       }
@@ -597,7 +655,7 @@ function demoInstitutionRepository(): InstitutionRepository {
       }
 
       let ownerTransferred = false;
-      team = team.map((candidate) => {
+      state.team = state.team.map((candidate) => {
         if (candidate.role === "owner" && candidate.status === "active" && !ownerTransferred) {
           ownerTransferred = true;
           return { ...candidate, role: "admin" as const };
@@ -843,17 +901,19 @@ function backendInstitutionRepository(): InstitutionRepository {
 function demoPublicVerificationRepository(): PublicVerificationRepository {
   return {
     async getByToken(token) {
-      return delay(cloneFixture(magicLinks[token] ?? { state: "invalid" }));
+      const state = await getDemoInstitutionState();
+      return delay(cloneFixture(state.magicLinks[token] ?? { state: "invalid" }));
     },
     async confirm(token, note) {
-      const record = assertMagicLinkUsable(token);
-      magicLinks[token] = {
+      const state = await getDemoInstitutionState();
+      const record = assertMagicLinkUsable(state, token);
+      state.magicLinks[token] = {
         ...record,
         state: "completed",
       };
       return delay(
         cloneFixture({
-          ...magicLinks[token],
+          ...state.magicLinks[token],
           request: record.request
             ? {
                 ...record.request,
@@ -864,20 +924,22 @@ function demoPublicVerificationRepository(): PublicVerificationRepository {
       );
     },
     async reportDiscrepancy(token) {
-      const record = assertMagicLinkUsable(token);
-      magicLinks[token] = {
+      const state = await getDemoInstitutionState();
+      const record = assertMagicLinkUsable(state, token);
+      state.magicLinks[token] = {
         ...record,
         state: "completed",
       };
-      return delay(cloneFixture(magicLinks[token]));
+      return delay(cloneFixture(state.magicLinks[token]));
     },
     async requestClarification(token) {
-      const record = assertMagicLinkUsable(token);
-      magicLinks[token] = {
+      const state = await getDemoInstitutionState();
+      const record = assertMagicLinkUsable(state, token);
+      state.magicLinks[token] = {
         ...record,
         state: "completed",
       };
-      return delay(cloneFixture(magicLinks[token]));
+      return delay(cloneFixture(state.magicLinks[token]));
     },
   };
 }

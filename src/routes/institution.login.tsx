@@ -3,7 +3,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { KairoLogo } from "@/components/institution/Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
-import { institutionAppConfig } from "@/lib/institution/config";
+import { institutionAppConfig, institutionDemoModeEnabled } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,7 +134,7 @@ function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-          {isDemoMode && (
+          {institutionDemoModeEnabled && isDemoMode && (
             <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Demo Mode is enabled. Use a Northbridge University team email and the demo password to
               preview the workspace.
@@ -158,7 +158,7 @@ function LoginPage() {
           Responding to a one-off request? Use the unique secure verification link sent to your
           institution.
         </p>
-        {isDemoMode && (
+        {institutionDemoModeEnabled && isDemoMode && (
           <p className="mt-2 text-center text-xs text-amber-900">
             Demo preview:{" "}
             <Link

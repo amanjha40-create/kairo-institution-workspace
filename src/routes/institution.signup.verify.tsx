@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SignupShell } from "@/components/institution/SignupShell";
-import { institutionAppConfig } from "@/lib/institution/config";
+import { institutionAppConfig, institutionDemoModeEnabled } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ function VerifyStep() {
     extractDomain(adminEmail) === institutionDomain.trim().toLowerCase();
 
   const chooseMethod = (m: VerificationMethod) => {
-    if (!institutionAppConfig.demoMode && m !== "email") return;
+    if (!institutionDemoModeEnabled && m !== "email") return;
     setMethod(m);
     updateInstitutionVerification({ method: m });
   };
@@ -187,7 +187,7 @@ function VerifyStep() {
           Icon={Globe}
           title="Domain verification"
           body="Verify ownership of your official domain later from workspace settings."
-          disabled={!institutionAppConfig.demoMode}
+          disabled={!institutionDemoModeEnabled}
         >
           {method === "domain" && (
             <div className="mt-4 space-y-2">
@@ -214,7 +214,7 @@ function VerifyStep() {
                   </>
                 )}
               </div>
-              {!institutionAppConfig.demoMode && (
+              {!institutionDemoModeEnabled && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   Domain verification is part of a later institution-specific milestone and is not
                   active in this release.
@@ -230,7 +230,7 @@ function VerifyStep() {
           Icon={ShieldCheck}
           title="Manual review"
           body="Submit your request for Kairo review. Useful when no institutional email is available."
-          disabled={!institutionAppConfig.demoMode}
+          disabled={!institutionDemoModeEnabled}
         >
           {method === "manual" && (
             <div className="mt-4 space-y-2">

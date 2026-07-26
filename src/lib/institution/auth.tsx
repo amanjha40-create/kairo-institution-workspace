@@ -11,10 +11,11 @@ import {
 } from "./backend";
 import { institutionAppConfig } from "./config";
 import { apiNotConfiguredError, invalidCredentialsError, type InstitutionError } from "./errors";
-import { mockInstitution, mockTeam } from "./mock-data";
 import type { InstitutionWorkspaceBootstrap, Session } from "./types";
 
 const DEMO_SESSION_KEY = "kairo.institution.demo.session";
+const loadDemoFixtures =
+  import.meta.env.VITE_DEMO_MODE === "true" ? () => import("./mock-data") : null;
 
 export interface InstitutionAuthState {
   session: Session | null;
@@ -70,7 +71,12 @@ function safeWriteDemoSession(session: Session | null) {
   }
 }
 
-function buildDemoSession(email: string): Session {
+async function buildDemoSession(email: string): Promise<Session> {
+  if (!loadDemoFixtures) {
+    throw invalidCredentialsError();
+  }
+
+  const { mockInstitution, mockTeam } = await loadDemoFixtures();
   const member = mockTeam.find(
     (candidate) =>
       candidate.email.toLowerCase() === email.toLowerCase() && candidate.status === "active",
@@ -215,7 +221,7 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
           throw invalidCredentialsError();
         }
 
-        const session = buildDemoSession(email);
+        const session = await buildDemoSession(email);
         safeWriteDemoSession(session);
       },
       async signOut() {
@@ -252,6 +258,11 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
         return this.getCurrentInstitutionSession();
       },
       async requestPasswordReset(email: string) {
+        if (!loadDemoFixtures) {
+          throw invalidCredentialsError();
+        }
+
+        const { mockTeam } = await loadDemoFixtures();
         const memberExists = mockTeam.some(
           (candidate) => candidate.email.toLowerCase() === email.toLowerCase(),
         );

@@ -7,10 +7,9 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "sonner";
 import { ConfigurationErrorState } from "@/components/institution/PageStates";
 import { institutionAppConfigError } from "@/lib/institution/config";
@@ -40,9 +39,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -86,7 +82,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
       },
-      { name: "author", content: "Lovable" },
+      { name: "author", content: "Kairo" },
       {
         property: "og:title",
         content: "Kairo — Trust for institutions and the people they educate",
@@ -97,8 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:card", content: "summary" },
       {
         name: "twitter:title",
         content: "Kairo — Trust for institutions and the people they educate",
@@ -107,16 +102,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "twitter:description",
         content:
           "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
-      },
-      {
-        property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5a3b856f-f727-40c8-8471-48a40eef5958/id-preview-7cdc0256--eddba2e4-702e-4a99-a71e-56b5034d411a.lovable.app-1784804938642.png",
-      },
-      {
-        name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5a3b856f-f727-40c8-8471-48a40eef5958/id-preview-7cdc0256--eddba2e4-702e-4a99-a71e-56b5034d411a.lovable.app-1784804938642.png",
       },
     ],
     links: [

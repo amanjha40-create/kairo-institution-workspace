@@ -26,6 +26,8 @@ export interface InstitutionAppConfig {
   backendConfigured: boolean;
 }
 
+export const institutionDemoModeEnabled = import.meta.env.VITE_DEMO_MODE === "true";
+
 const parsedConfig = rawConfigSchema.safeParse(import.meta.env);
 
 let configError: string | null = null;

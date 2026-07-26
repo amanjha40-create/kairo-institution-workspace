@@ -5,9 +5,8 @@ import { EmptyState } from "@/components/institution/PageStates";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { useInstitutionAuth } from "@/lib/institution/auth";
-import { institutionAppConfig } from "@/lib/institution/config";
+import { institutionDemoModeEnabled } from "@/lib/institution/config";
 import {
-  createMockApprovedInstitutionSession,
   getInstitutionWorkspaceApplication,
   statusLabel,
   type WorkspaceApplication,
@@ -55,8 +54,9 @@ function SuccessPage() {
 
   const institutionName = app?.institution.name || "your institution";
 
-  const previewApproved = () => {
+  const previewApproved = async () => {
     if (!app) return;
+    const { createMockApprovedInstitutionSession } = await import("@/lib/institution/signup");
     createMockApprovedInstitutionSession({
       name: app.administrator.fullName || "Institution Admin",
       email: app.administrator.workEmail || "admin@example.edu",
@@ -104,7 +104,7 @@ function SuccessPage() {
           )}
         </div>
 
-        {institutionAppConfig.demoMode && (
+        {institutionDemoModeEnabled && (
           <div className="rounded-xl border border-dashed border-[color:var(--kairo-navy-deep)]/30 bg-[color:var(--kairo-teal-soft)]/40 p-4">
             <div className="flex items-start gap-3">
               <Sparkles className="mt-0.5 h-4 w-4 text-[color:var(--kairo-navy-deep)]" />
@@ -120,7 +120,9 @@ function SuccessPage() {
                   type="button"
                   size="sm"
                   className="mt-3"
-                  onClick={previewApproved}
+                  onClick={() => {
+                    void previewApproved();
+                  }}
                   disabled={!app}
                 >
                   Preview approved workspace

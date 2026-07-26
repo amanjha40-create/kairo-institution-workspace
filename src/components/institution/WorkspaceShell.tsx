@@ -3,7 +3,11 @@ import { useState, type ReactNode } from "react";
 import { Menu, X, LogOut, ShieldCheck, Users, UserCog, Settings } from "lucide-react";
 import { KairoLogo } from "./Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
-import { getInstitutionModeLabel, institutionAppConfig } from "@/lib/institution/config";
+import {
+  getInstitutionModeLabel,
+  institutionDemoModeEnabled,
+  institutionAppConfig,
+} from "@/lib/institution/config";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -50,7 +54,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             <span className="rounded-full bg-[color:var(--kairo-teal-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--kairo-navy-deep)]">
               Trust Workspace
             </span>
-            {institutionAppConfig.demoMode && (
+            {institutionDemoModeEnabled && institutionAppConfig.demoMode && (
               <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
                 {getInstitutionModeLabel()}
               </span>

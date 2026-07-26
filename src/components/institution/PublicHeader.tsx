@@ -1,7 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { KairoLogo } from "./Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
-import { getInstitutionModeLabel, institutionAppConfig } from "@/lib/institution/config";
+import {
+  getInstitutionModeLabel,
+  institutionDemoModeEnabled,
+  institutionAppConfig,
+} from "@/lib/institution/config";
 
 export function PublicHeader() {
   const { session, hydrated } = useInstitutionAuth();
@@ -22,7 +26,7 @@ export function PublicHeader() {
           </Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          {institutionAppConfig.demoMode && (
+          {institutionDemoModeEnabled && institutionAppConfig.demoMode && (
             <span className="hidden rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-900 sm:inline-flex">
               {getInstitutionModeLabel()}
             </span>
