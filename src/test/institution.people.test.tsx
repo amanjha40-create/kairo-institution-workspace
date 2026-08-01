@@ -25,6 +25,18 @@ async function renderRoute(path: string) {
   vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
 
   const peopleApi = {
+    getInstitutionNotifications: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
+      offset: 0,
+      limit: 10,
+      unreadCount: 0,
+    }),
+    markInstitutionNotificationRead: vi.fn(),
+    markAllInstitutionNotificationsRead: vi.fn(),
     getInstitutionPeople: vi.fn().mockResolvedValue({
       items: [
         {
@@ -143,6 +155,34 @@ async function renderRoute(path: string) {
         programme: "Computer Science",
       },
     ]),
+    getInstitutionPersonPassportSummary: vi.fn().mockResolvedValue({
+      personId: "person_001",
+      displayName: "Amina Rahman",
+      lifecycleStatus: "alumni",
+      degree: "Bachelor of Science",
+      programme: "Computer Science",
+      department: "Engineering",
+      admissionPeriod: "2020",
+      graduationPeriod: "2024",
+      verificationStatus: "verified",
+      consentedProfessionalFields: ["current_title"],
+      professionalInformation: [
+        {
+          field: "current_title",
+          value: "Software Engineer",
+          consentedAt: "2026-07-20T10:00:00Z",
+        },
+      ],
+      credentials: [
+        {
+          id: "cred_001",
+          title: "Bachelor of Science Degree Certificate",
+          credentialType: "degree_certificate",
+          status: "issued",
+          issuedPeriod: "2024",
+        },
+      ],
+    }),
   };
 
   vi.doMock("@/lib/institution/api", () => peopleApi);
@@ -192,11 +232,16 @@ describe("institution people routes", () => {
     const peopleApi = await renderRoute("/institution/people/person_001");
 
     expect(await screen.findByText("Institution relationship")).toBeInTheDocument();
+    expect(screen.getByText("Passport summary")).toBeInTheDocument();
     expect(screen.getByText("NB-2020-0142")).toBeInTheDocument();
     expect(screen.getByText("Bachelor of Science Degree Certificate")).toBeInTheDocument();
     expect(screen.getByText("pending to verified")).toBeInTheDocument();
     expect(screen.getByText("Lifecycle changed to Alumni")).toBeInTheDocument();
     expect(peopleApi.getInstitutionPerson).toHaveBeenCalledWith("inst_northbridge", "person_001");
+    expect(peopleApi.getInstitutionPersonPassportSummary).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "person_001",
+    );
     expect(peopleApi.getInstitutionPersonVerificationHistory).toHaveBeenCalledWith(
       "inst_northbridge",
       "person_001",

@@ -396,8 +396,8 @@ export async function requestInstitutionEmailVerification(): Promise<{
     );
   }
 
-  let signupSessionId = current.verification.signupSessionId;
-  let emailMasked = current.verification.emailMasked ?? current.administrator.workEmail;
+  const signupSessionId = current.verification.signupSessionId;
+  const emailMasked = current.verification.emailMasked ?? current.administrator.workEmail;
 
   if (!signupSessionId) {
     const started = await startOrganizationStaffSignup({
@@ -405,8 +405,23 @@ export async function requestInstitutionEmailVerification(): Promise<{
       workEmail: current.administrator.workEmail,
       password: current.administrator.password,
     });
-    signupSessionId = started.signupSessionId;
-    emailMasked = started.emailMasked;
+    persistDraft({
+      ...current,
+      verification: {
+        ...current.verification,
+        method: "email",
+        emailStatus: started.emailVerified ? "verified" : "code_sent",
+        signupSessionId: started.signupSessionId,
+        emailMasked: started.emailMasked || emailMasked,
+        resendAfterSeconds: started.resendAfterSeconds,
+        expiresInSeconds: started.expiresInSeconds,
+      },
+    });
+
+    return {
+      ok: true,
+      sentTo: started.emailMasked || emailMasked,
+    };
   }
 
   const sent = await sendOrganizationStaffSignupEmail(signupSessionId);

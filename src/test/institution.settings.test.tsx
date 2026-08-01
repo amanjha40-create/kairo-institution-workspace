@@ -25,6 +25,18 @@ async function renderSettingsRoute() {
   vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
 
   const settingsApi = {
+    getInstitutionNotifications: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
+      offset: 0,
+      limit: 10,
+      unreadCount: 0,
+    }),
+    markInstitutionNotificationRead: vi.fn(),
+    markAllInstitutionNotificationsRead: vi.fn(),
     getInstitutionSettings: vi.fn().mockResolvedValue({
       institution: {
         id: "inst_northbridge",
@@ -66,8 +78,9 @@ async function renderSettingsRoute() {
           expiresAt: "2026-08-20T08:00:00Z",
           lastActiveAt: "2026-07-26T09:30:00Z",
           current: false,
-          device: null,
-          location: null,
+          device: "MacBook Pro",
+          browser: "Chrome",
+          location: "Lagos, NG",
         },
       ],
       security: {
@@ -137,6 +150,7 @@ describe("institution settings route", () => {
     expect(screen.getByDisplayValue("Priya Menon")).toBeInTheDocument();
     expect(screen.getByText("Verification preferences")).toBeInTheDocument();
     expect(screen.getByText(/are not exposed by the shared backend/i)).toBeInTheDocument();
+    expect(screen.getByText(/MacBook Pro · Chrome · Lagos, NG/i)).toBeInTheDocument();
     expect(screen.getByText("Student Information System")).toBeInTheDocument();
     expect(screen.getByText("Multi-factor authentication")).toBeInTheDocument();
     expect(settingsApi.getInstitutionSettings).toHaveBeenCalledWith("inst_northbridge");

@@ -523,9 +523,15 @@ function SettingsPage() {
                       <div className="text-xs text-muted-foreground">
                         Expires {formatDateTime(activeSession.expiresAt)}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Device details unavailable from the current backend contract.
-                      </div>
+                      {(activeSession.device ||
+                        activeSession.browser ||
+                        activeSession.location) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[activeSession.device, activeSession.browser, activeSession.location]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      )}
                     </div>
                     <Button
                       size="sm"

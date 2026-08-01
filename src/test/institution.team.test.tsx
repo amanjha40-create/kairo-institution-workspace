@@ -24,6 +24,18 @@ async function renderTeamRoute() {
   vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
 
   const teamApi = {
+    getInstitutionNotifications: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
+      offset: 0,
+      limit: 10,
+      unreadCount: 0,
+    }),
+    markInstitutionNotificationRead: vi.fn(),
+    markAllInstitutionNotificationsRead: vi.fn(),
     getInstitutionTeam: vi.fn().mockResolvedValue({
       members: [
         {

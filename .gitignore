@@ -12,6 +12,7 @@ dist
 dist-ssr
 .output
 .vinxi
+.amplify-hosting/
 .tanstack/**
 .nitro
 *.local

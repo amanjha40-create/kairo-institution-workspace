@@ -45,6 +45,7 @@ export type VerificationOriginType =
   | "system";
 
 export type MatchStatus = "exact" | "partial" | "no_match" | "record_unavailable";
+export type VerificationPriority = "low" | "normal" | "high" | "urgent";
 
 export type InstitutionStatus = "current_student" | "alumni" | "withdrawn" | "inactive";
 
@@ -165,6 +166,7 @@ export interface VerificationRequest {
   requestPurpose: string;
   requestingContact?: string;
   status: VerificationStatus;
+  priority?: VerificationPriority;
   receivedAt: string;
   dueAt?: string;
   assignedTo?: string;
@@ -189,6 +191,28 @@ export interface VerificationRequest {
   trustContext?: Record<string, unknown>;
   evidenceSummary?: VerificationEvidenceSummary;
   isAssignedToCurrentUser?: boolean | null;
+}
+
+export interface InstitutionVerificationInbox {
+  items: VerificationRequest[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
+}
+
+export interface InstitutionVerificationInboxFilters {
+  search?: string;
+  status?: VerificationStatus | "all";
+  priority?: VerificationPriority | "all";
+  requestType?: VerificationRequestType | "all";
+  assignedToMe?: boolean;
+  sortBy?: "created_at" | "updated_at" | "due_date" | "priority" | "status";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
 }
 
 export interface SharedProfessionalProfile {
@@ -339,6 +363,28 @@ export interface InstitutionNotificationPreference {
   required: boolean;
 }
 
+export interface InstitutionNotification {
+  id: string;
+  category: string;
+  eventType: string;
+  title: string;
+  body: string;
+  metadata: Record<string, unknown>;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface InstitutionNotificationCenter {
+  items: InstitutionNotification[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
+  unreadCount: number;
+}
+
 export interface InstitutionAccountSession {
   id: string;
   createdAt: string;
@@ -346,6 +392,7 @@ export interface InstitutionAccountSession {
   lastActiveAt: string;
   current: boolean;
   device?: string | null;
+  browser?: string | null;
   location?: string | null;
 }
 
@@ -366,6 +413,70 @@ export interface InstitutionSettings {
     mfaAvailable: boolean;
     securityHistoryAvailable: boolean;
   };
+}
+
+export interface InstitutionDashboardCredential {
+  id: string;
+  title: string;
+  credentialType: string;
+  status: InstitutionCredentialStatus;
+  updatedAt: string;
+}
+
+export interface InstitutionDashboardActivity {
+  requestId: string;
+  eventType: string;
+  eventSource: string;
+  createdAt: string;
+}
+
+export interface InstitutionPeopleSummary {
+  total: number;
+  currentStudent: number;
+  alumni: number;
+  withdrawn: number;
+  inactive: number;
+}
+
+export interface InstitutionDashboardStatistics {
+  totalVerifications: number;
+  verifiedVerifications: number;
+  awaitingInformation: number;
+  highPriority: number;
+}
+
+export interface InstitutionDashboard {
+  pendingVerifications: number;
+  recentlyVerifiedCredentials: InstitutionDashboardCredential[];
+  verificationActivity: InstitutionDashboardActivity[];
+  people: InstitutionPeopleSummary;
+  statistics: InstitutionDashboardStatistics;
+}
+
+export interface InstitutionPassportSummary {
+  personId: string;
+  displayName: string;
+  lifecycleStatus: InstitutionStatus;
+  degree: string;
+  programme: string;
+  department: string;
+  admissionPeriod: string;
+  graduationPeriod: string;
+  verificationStatus: TrustStatus;
+  consentedProfessionalFields: ProfessionalField[];
+  professionalInformation: Array<{
+    field: ProfessionalField;
+    value: string;
+    consentedAt: string;
+    expiresAt?: string | null;
+  }>;
+  credentials: Array<{
+    id: string;
+    title: string;
+    credentialType: string;
+    status: InstitutionCredentialStatus | string;
+    issuedPeriod: string;
+  }>;
 }
 
 export interface MagicLinkRequest {

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
@@ -12,8 +13,19 @@ import {
   Lock,
   X,
 } from "lucide-react";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  ServiceUnavailableState,
+} from "@/components/institution/PageStates";
 import { PublicHeader } from "@/components/institution/PublicHeader";
+import { getInstitutionDashboard } from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
+import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
+import { formatDateTime } from "@/lib/institution/format";
+import { mapCredentialStatusLabel } from "@/lib/institution/people";
+import { institutionQueryKeys } from "@/lib/institution/query-keys";
 
 const searchSchema = z.object({
   source: z.string().optional(),
@@ -51,6 +63,168 @@ function PublicInstitutionPage() {
   useEffect(() => {
     if (search.source === "verification-complete" && !authed) setShowBanner(true);
   }, [search.source, authed]);
+
+  const dashboardQuery = useQuery({
+    queryKey: institutionQueryKeys.dashboard(session?.institutionId),
+    queryFn: () => {
+      if (!session?.institutionId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionDashboard(session.institutionId);
+    },
+    enabled: authed && Boolean(session?.institutionId),
+  });
+
+  if (authed) {
+    if (dashboardQuery.isLoading) {
+      return (
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <LoadingState />
+        </div>
+      );
+    }
+
+    if (
+      dashboardQuery.isError &&
+      isInstitutionError(dashboardQuery.error) &&
+      dashboardQuery.error.status === 503
+    ) {
+      return (
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <ServiceUnavailableState
+            title="Dashboard unavailable"
+            description={getInstitutionErrorMessage(dashboardQuery.error)}
+          />
+        </div>
+      );
+    }
+
+    if (dashboardQuery.isError) {
+      return (
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <ErrorState onRetry={() => void dashboardQuery.refetch()} />
+        </div>
+      );
+    }
+
+    if (!dashboardQuery.data) {
+      return (
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <EmptyState
+            title="Dashboard unavailable"
+            description="Institution dashboard data is not available yet."
+          />
+        </div>
+      );
+    }
+
+    const dashboard = dashboardQuery.data;
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review current verification activity, people totals, and recent credential updates for{" "}
+            {session.institutionName}.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard label="Pending verifications" value={dashboard.pendingVerifications} />
+          <StatCard label="Total verifications" value={dashboard.statistics.totalVerifications} />
+          <StatCard label="Recently verified" value={dashboard.statistics.verifiedVerifications} />
+          <StatCard label="Awaiting information" value={dashboard.statistics.awaitingInformation} />
+          <StatCard label="High priority" value={dashboard.statistics.highPriority} />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <section className="rounded-lg border border-border bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Verification activity
+              </h2>
+              <Link
+                to="/institution/verifications"
+                className="text-xs font-medium text-[color:var(--kairo-navy)] hover:underline"
+              >
+                Open inbox
+              </Link>
+            </div>
+            {dashboard.verificationActivity.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">No recent verification activity.</p>
+            ) : (
+              <ol className="mt-4 space-y-3">
+                {dashboard.verificationActivity.map((event) => (
+                  <li key={`${event.requestId}-${event.createdAt}`} className="flex gap-3 text-sm">
+                    <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[color:var(--kairo-teal)]" />
+                    <div>
+                      <div className="font-medium">{event.eventType.replace(/_/g, " ")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {event.eventSource.replace(/_/g, " ")} · {formatDateTime(event.createdAt)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-border bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              People summary
+            </h2>
+            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
+              <MiniStat label="Total" value={dashboard.people.total} />
+              <MiniStat label="Current students" value={dashboard.people.currentStudent} />
+              <MiniStat label="Alumni" value={dashboard.people.alumni} />
+              <MiniStat label="Withdrawn" value={dashboard.people.withdrawn} />
+              <MiniStat label="Inactive" value={dashboard.people.inactive} />
+            </dl>
+          </section>
+        </div>
+
+        <section className="rounded-lg border border-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Recently verified credentials
+            </h2>
+            <Link
+              to="/institution/people"
+              className="text-xs font-medium text-[color:var(--kairo-navy)] hover:underline"
+            >
+              Open people
+            </Link>
+          </div>
+          {dashboard.recentlyVerifiedCredentials.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              No recently verified credentials yet.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-border">
+              {dashboard.recentlyVerifiedCredentials.map((credential) => (
+                <li
+                  key={credential.id}
+                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <div className="text-sm font-medium">{credential.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {credential.credentialType} · Updated {formatDateTime(credential.updatedAt)}
+                    </div>
+                  </div>
+                  <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                    {mapCredentialStatusLabel(credential.status)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-foreground">
@@ -326,6 +500,24 @@ function PublicInstitutionPage() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-white p-4 shadow-sm">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border/70 bg-secondary/30 px-3 py-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-lg font-semibold text-foreground">{value}</dd>
     </div>
   );
 }

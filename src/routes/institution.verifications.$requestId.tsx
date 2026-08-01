@@ -5,12 +5,14 @@ import { ArrowLeft, Check, FileText, Info, X } from "lucide-react";
 import {
   addInternalNote,
   assignInstitutionVerificationRequestReviewer,
+  cancelInstitutionVerification,
   getInstitutionTeam,
   getInstitutionVerificationEvidenceItems,
   getInstitutionVerificationRequest,
   getInstitutionVerificationTimelineItems,
   requestInstitutionClarification,
   respondToInstitutionVerification,
+  setInstitutionVerificationPriority,
 } from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
@@ -31,7 +33,10 @@ import {
   ConfirmDialog,
   DiscrepancyDialog,
 } from "@/components/institution/ResponseDialogs";
-import { VerificationStatusBadge } from "@/components/institution/StatusBadge";
+import {
+  VerificationPriorityBadge,
+  VerificationStatusBadge,
+} from "@/components/institution/StatusBadge";
 import {
   Select,
   SelectContent,
@@ -41,6 +46,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import type { VerificationPriority } from "@/lib/institution/types";
 
 export const Route = createFileRoute("/institution/verifications/$requestId")({
   component: RequestDetailPage,
@@ -65,7 +71,14 @@ function RequestDetailPage() {
   const organizationId = session?.institutionId;
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: institutionQueryKeys.verification(requestId),
-    queryFn: () => getInstitutionVerificationRequest(requestId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionVerificationRequest(organizationId, requestId);
+    },
+    enabled: Boolean(organizationId),
   });
   const evidenceQuery = useQuery({
     queryKey: institutionQueryKeys.verificationEvidence(requestId),
@@ -116,7 +129,9 @@ function RequestDetailPage() {
     if (!request) return;
 
     const matchedMember = assignableMembers.find(
-      (member) => member.email.toLowerCase() === request.assignedReviewer?.email?.toLowerCase(),
+      (member) =>
+        member.email.toLowerCase() === request.assignedReviewer?.email?.toLowerCase() ||
+        member.name.toLowerCase() === request.assignedTo?.toLowerCase(),
     );
     setSelectedReviewerId(matchedMember?.id ?? "unassigned");
   }, [assignableMembers, request]);
@@ -127,6 +142,8 @@ function RequestDetailPage() {
       qc.invalidateQueries({ queryKey: institutionQueryKeys.verificationEvidence(requestId) }),
       qc.invalidateQueries({ queryKey: institutionQueryKeys.verificationTimeline(requestId) }),
       qc.invalidateQueries({ queryKey: institutionQueryKeys.verifications(organizationId) }),
+      qc.invalidateQueries({ queryKey: ["institution", "verification-inbox", organizationId] }),
+      qc.invalidateQueries({ queryKey: institutionQueryKeys.dashboard(organizationId) }),
     ]);
   };
 
@@ -164,6 +181,7 @@ function RequestDetailPage() {
 
   const canRespond =
     permissions.canRespondToVerificationRequests && !terminalStatuses.has(request.status);
+  const canCancel = canRespond && request.status !== "cancelled";
   const rowClass = "grid grid-cols-2 gap-3 text-sm";
 
   return (
@@ -188,6 +206,11 @@ function RequestDetailPage() {
             <span>Received: {formatDate(request.receivedAt)}</span>
             {request.dueAt && <span>Due: {formatDate(request.dueAt)}</span>}
             <span>Reviewer: {request.assignedTo ?? "Unassigned"}</span>
+            {request.priority && (
+              <span className="inline-flex items-center gap-1">
+                Priority <VerificationPriorityBadge priority={request.priority} />
+              </span>
+            )}
           </div>
         </div>
         {canRespond && (
@@ -201,6 +224,34 @@ function RequestDetailPage() {
             <Button size="sm" variant="ghost" onClick={() => setClarifyOpen(true)}>
               <Info className="mr-1 h-4 w-4" /> Request Clarification
             </Button>
+            {canCancel && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pendingAction === "cancel"}
+                onClick={async () => {
+                  if (
+                    typeof window !== "undefined" &&
+                    !window.confirm("Cancel this verification request?")
+                  ) {
+                    return;
+                  }
+
+                  try {
+                    setPendingAction("cancel");
+                    await cancelInstitutionVerification(organizationId!, request.id);
+                    await invalidate();
+                    toast.success("Verification request cancelled");
+                  } catch (err) {
+                    toast.error(getInstitutionErrorMessage(err));
+                  } finally {
+                    setPendingAction(null);
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -213,6 +264,12 @@ function RequestDetailPage() {
             <FieldRow
               label="Request type"
               value={getVerificationRequestTypeLabel(request.requestType)}
+            />
+            <FieldRow
+              label="Priority"
+              value={
+                request.priority ? <VerificationPriorityBadge priority={request.priority} /> : "—"
+              }
             />
             <FieldRow label="Request date" value={formatDate(request.receivedAt)} />
             {request.dueAt && <FieldRow label="Due date" value={formatDate(request.dueAt)} />}
@@ -257,15 +314,7 @@ function RequestDetailPage() {
         </Section>
 
         <Section title="Institution record" className="lg:col-span-1">
-          {request.source === "backend" ? (
-            <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
-              <div className="font-medium">Institution record comparison unavailable</div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                The shared verification-request backend does not yet return institution-record
-                comparison data for this request. Final verification actions remain available below.
-              </p>
-            </div>
-          ) : request.institutionRecord.found ? (
+          {request.institutionRecord.found ? (
             <>
               <div className="mb-3 flex items-center gap-2 text-xs">
                 <span className="rounded-full bg-[color:var(--kairo-teal-soft)] px-2 py-0.5 font-medium text-[color:var(--kairo-navy-deep)]">
@@ -283,7 +332,10 @@ function RequestDetailPage() {
                 <FieldCell
                   label="Student ID"
                   value={request.institutionRecord.studentId ?? "—"}
-                  diff={request.fieldMatches?.["Student ID"] === "different"}
+                  diff={
+                    request.fieldMatches?.student_id === "different" ||
+                    request.fieldMatches?.["Student ID"] === "different"
+                  }
                 />
                 <FieldCell
                   label="Official name"
@@ -292,27 +344,32 @@ function RequestDetailPage() {
                 <FieldCell
                   label="Degree"
                   value={request.institutionRecord.degree ?? "—"}
-                  diff={request.fieldMatches?.Degree === "different"}
+                  diff={request.fieldMatches?.degree === "different"}
                 />
                 <FieldCell
                   label="Programme"
                   value={request.institutionRecord.programme ?? "—"}
-                  diff={request.fieldMatches?.Programme === "different"}
+                  diff={request.fieldMatches?.programme === "different"}
                 />
-                <FieldCell label="Department" value={request.institutionRecord.department ?? "—"} />
+                <FieldCell
+                  label="Department"
+                  value={request.institutionRecord.department ?? "—"}
+                  diff={request.fieldMatches?.department === "different"}
+                />
                 <FieldCell
                   label="Admission"
                   value={formatDate(request.institutionRecord.admissionDate)}
+                  diff={request.fieldMatches?.admission === "different"}
                 />
                 <FieldCell
                   label="Graduation"
                   value={formatDate(request.institutionRecord.graduationDate)}
-                  diff={request.fieldMatches?.["Graduation year"] === "different"}
+                  diff={request.fieldMatches?.graduation === "different"}
                 />
                 <FieldCell
                   label="Completion"
                   value={request.institutionRecord.completionStatus ?? "—"}
-                  diff={request.fieldMatches?.["Completion status"] === "different"}
+                  diff={request.fieldMatches?.verification_status === "different"}
                 />
                 <FieldCell
                   label="Credential issuance"
@@ -344,35 +401,42 @@ function RequestDetailPage() {
             No evidence has been shared for this request yet.
           </div>
         ) : (
-          <ul className="divide-y divide-border">
-            {evidence.map((file) => (
-              <li key={file.id} className="flex items-center justify-between py-2 text-sm">
-                <div className="flex min-w-0 items-center gap-3">
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{file.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {file.type} · Uploaded by {file.uploadedBy} · {formatDate(file.uploadedAt)}
+          <div className="space-y-3">
+            {request.consentedEvidenceScope && request.consentedEvidenceScope.length > 0 ? (
+              <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+                Shared evidence scope: {request.consentedEvidenceScope.join(", ")}
+              </div>
+            ) : null}
+            <ul className="divide-y divide-border">
+              {evidence.map((file) => (
+                <li key={file.id} className="flex items-center justify-between py-2 text-sm">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{file.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {file.type} · Uploaded by {file.uploadedBy} · {formatDate(file.uploadedAt)}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (!file.url) {
-                      toast.error("This evidence item is not available for download.");
-                      return;
-                    }
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!file.url) {
+                        toast.error("This evidence item is not available for download.");
+                        return;
+                      }
 
-                    window.open(file.url, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  View
-                </Button>
-              </li>
-            ))}
-          </ul>
+                      window.open(file.url, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    View
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </Section>
 
@@ -422,6 +486,41 @@ function RequestDetailPage() {
               >
                 {pendingAction === "assign-reviewer" ? "Saving…" : "Save assignment"}
               </Button>
+            </div>
+          ) : null}
+
+          {permissions.canRespondToVerificationRequests && request.priority ? (
+            <div className="max-w-[220px]">
+              <label className="text-xs text-muted-foreground">Priority</label>
+              <Select
+                value={request.priority ?? "normal"}
+                onValueChange={async (value) => {
+                  try {
+                    setPendingAction("priority");
+                    await setInstitutionVerificationPriority(
+                      organizationId!,
+                      request.id,
+                      value as VerificationPriority,
+                    );
+                    await invalidate();
+                    toast.success("Priority updated");
+                  } catch (err) {
+                    toast.error(getInstitutionErrorMessage(err));
+                  } finally {
+                    setPendingAction(null);
+                  }
+                }}
+              >
+                <SelectTrigger disabled={pendingAction === "priority"}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">low</SelectItem>
+                  <SelectItem value="normal">normal</SelectItem>
+                  <SelectItem value="high">high</SelectItem>
+                  <SelectItem value="urgent">urgent</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
 

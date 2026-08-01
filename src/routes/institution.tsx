@@ -38,12 +38,13 @@ function InstitutionLayoutInner() {
   const { session, hydrated, authenticated, bootstrap, error } = useInstitutionAuth();
 
   const path = location.pathname;
-  const isPublic =
-    path === "/institution" ||
-    path === "/institution/" ||
+  const isInstitutionHome = path === "/institution" || path === "/institution/";
+  const isAlwaysPublic =
     path === "/institution/login" ||
     path.startsWith("/institution/signup") ||
     path.startsWith("/institution/verify/");
+  const shouldExposePublicHome = isInstitutionHome && hydrated && !authenticated;
+  const isPublic = isAlwaysPublic || shouldExposePublicHome;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -64,7 +65,7 @@ function InstitutionLayoutInner() {
     }
   }, [authenticated, bootstrap?.state, hydrated, isPublic, navigate, path, session]);
 
-  if (isPublic) return <Outlet />;
+  if (isAlwaysPublic || shouldExposePublicHome) return <Outlet />;
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">

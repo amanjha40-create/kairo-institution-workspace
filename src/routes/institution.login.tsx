@@ -11,7 +11,11 @@ import { Label } from "@/components/ui/label";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
-const searchSchema = z.object({ redirect: z.string().optional() });
+const searchSchema = z.object({
+  redirect: z.string().optional(),
+  reset_token: z.string().optional(),
+  token: z.string().optional(),
+});
 
 export const Route = createFileRoute("/institution/login")({
   validateSearch: searchSchema,
@@ -33,13 +37,16 @@ export const Route = createFileRoute("/institution/login")({
 });
 
 function LoginPage() {
-  const { signIn, requestPasswordReset, isDemoMode } = useInstitutionAuth();
+  const { signIn, requestPasswordReset, completePasswordReset, isDemoMode } = useInstitutionAuth();
   const search = useSearch({ from: "/institution/login" });
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resetToken = search.reset_token ?? search.token;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +67,31 @@ function LoginPage() {
     }
   };
 
+  const onResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetToken) return;
+    if (!newPassword || !confirmPassword) {
+      setError("Enter and confirm your new password.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      await completePasswordReset(resetToken, newPassword);
+      toast.success("Password updated. You can now sign in.");
+      navigate({ to: "/institution/login", replace: true });
+    } catch (err) {
+      setError(getInstitutionErrorMessage(err, "We couldn't complete that password reset."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-white to-[color:var(--kairo-teal-soft)]">
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
@@ -70,58 +102,91 @@ function LoginPage() {
           </span>
         </div>
         <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
-          <h1 className="text-lg font-semibold text-foreground">Sign in</h1>
+          <h1 className="text-lg font-semibold text-foreground">
+            {resetToken ? "Reset password" : "Sign in"}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Verify education claims and protect your institution's trust.
+            {resetToken
+              ? "Choose a new password to finish resetting your Institution Workspace account."
+              : "Verify education claims and protect your institution's trust."}
           </p>
-          <form onSubmit={onSubmit} className="mt-5 space-y-4">
-            <div>
-              <Label htmlFor="email">Work email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <button
-                  type="button"
-                  className="text-xs text-[color:var(--kairo-navy)] underline-offset-2 hover:underline"
-                  onClick={async () => {
-                    if (!email.trim()) {
-                      setError("Enter your work email first to request a password reset.");
-                      return;
-                    }
+          <form onSubmit={resetToken ? onResetSubmit : onSubmit} className="mt-5 space-y-4">
+            {resetToken ? (
+              <>
+                <div>
+                  <Label htmlFor="new-password">New password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="confirm-password">Confirm new password</Label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label htmlFor="email">Work email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <button
+                      type="button"
+                      className="text-xs text-[color:var(--kairo-navy)] underline-offset-2 hover:underline"
+                      onClick={async () => {
+                        if (!email.trim()) {
+                          setError("Enter your work email first to request a password reset.");
+                          return;
+                        }
 
-                    try {
-                      await requestPasswordReset(email.trim());
-                      toast.success(
-                        isDemoMode
-                          ? "Demo password reset request accepted."
-                          : "If an account exists for that email, a password reset email has been sent.",
-                      );
-                    } catch (err) {
-                      setError(getInstitutionErrorMessage(err));
-                    }
-                  }}
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+                        try {
+                          await requestPasswordReset(email.trim());
+                          toast.success(
+                            isDemoMode
+                              ? "Demo password reset request accepted."
+                              : "If an account exists for that email, a password reset email has been sent.",
+                          );
+                        } catch (err) {
+                          setError(getInstitutionErrorMessage(err));
+                        }
+                      }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
             {error && (
               <div
                 role="alert"
@@ -131,7 +196,13 @@ function LoginPage() {
               </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
+              {loading
+                ? resetToken
+                  ? "Updating…"
+                  : "Signing in…"
+                : resetToken
+                  ? "Update password"
+                  : "Sign in"}
             </Button>
           </form>
           {institutionDemoModeEnabled && isDemoMode && (

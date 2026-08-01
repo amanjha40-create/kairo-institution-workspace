@@ -1,13 +1,21 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Menu, X, LogOut, ShieldCheck, Users, UserCog, Settings } from "lucide-react";
+import { Bell, Menu, X, LogOut, ShieldCheck, Users, UserCog, Settings } from "lucide-react";
 import { KairoLogo } from "./Logo";
+import {
+  getInstitutionNotifications,
+  markAllInstitutionNotificationsRead,
+  markInstitutionNotificationRead,
+} from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import {
   getInstitutionModeLabel,
   institutionDemoModeEnabled,
   institutionAppConfig,
 } from "@/lib/institution/config";
+import { formatDateTime } from "@/lib/institution/format";
+import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -26,10 +34,39 @@ const roleLabels: Record<string, string> = {
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const { session, signOut } = useInstitutionAuth();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const notificationsQuery = useQuery({
+    queryKey: institutionQueryKeys.notifications(),
+    queryFn: getInstitutionNotifications,
+    enabled: Boolean(session),
+    staleTime: 30_000,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: markInstitutionNotificationRead,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: institutionQueryKeys.notifications() });
+      await queryClient.invalidateQueries({
+        queryKey: institutionQueryKeys.notificationUnreadCount,
+      });
+    },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllInstitutionNotificationsRead,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: institutionQueryKeys.notifications() });
+      await queryClient.invalidateQueries({
+        queryKey: institutionQueryKeys.notificationUnreadCount,
+      });
+    },
+  });
 
   const handleSignOut = () => {
     void signOut().finally(() => {
@@ -43,7 +80,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
-          <Link to="/institution/verifications" className="flex shrink-0 items-center gap-2">
+          <Link to="/institution" className="flex shrink-0 items-center gap-2">
             <KairoLogo className="h-7 w-auto" />
           </Link>
           <div className="hidden min-w-0 items-center gap-2 md:flex">
@@ -77,6 +114,81 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <div className="relative hidden md:block">
+              <button
+                onClick={() => setNotificationsOpen((value) => !value)}
+                className="relative rounded-md border border-border bg-white p-2 hover:bg-secondary"
+                aria-label="Open notifications"
+              >
+                <Bell className="h-4 w-4" />
+                {notificationsQuery.data && notificationsQuery.data.unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-semibold text-white">
+                    {notificationsQuery.data.unreadCount}
+                  </span>
+                ) : null}
+              </button>
+              {notificationsOpen && (
+                <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-white p-1 shadow-lg">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <div className="text-sm font-medium">Notifications</div>
+                    <button
+                      type="button"
+                      className="text-xs text-[color:var(--kairo-navy)] hover:underline disabled:text-muted-foreground"
+                      disabled={
+                        markAllReadMutation.isPending ||
+                        !notificationsQuery.data ||
+                        notificationsQuery.data.unreadCount === 0
+                      }
+                      onClick={() => markAllReadMutation.mutate()}
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+                  {notificationsQuery.isLoading ? (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
+                  ) : notificationsQuery.isError ? (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">
+                      Notifications are unavailable right now.
+                    </div>
+                  ) : !notificationsQuery.data || notificationsQuery.data.items.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">
+                      No notifications yet.
+                    </div>
+                  ) : (
+                    <ul className="max-h-96 overflow-y-auto">
+                      {notificationsQuery.data.items.map((notification) => (
+                        <li
+                          key={notification.id}
+                          className="border-t border-border px-3 py-3 first:border-t-0"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium">{notification.title}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {notification.body}
+                              </div>
+                              <div className="mt-1 text-[11px] text-muted-foreground">
+                                {formatDateTime(notification.createdAt)}
+                              </div>
+                            </div>
+                            {!notification.readAt ? (
+                              <button
+                                type="button"
+                                className="shrink-0 text-[11px] text-[color:var(--kairo-navy)] hover:underline"
+                                disabled={markReadMutation.isPending}
+                                onClick={() => markReadMutation.mutate(notification.id)}
+                              >
+                                Mark read
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="relative hidden md:block">
               <button
                 onClick={() => setMenuOpen((v) => !v)}

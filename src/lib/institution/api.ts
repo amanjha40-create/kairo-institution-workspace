@@ -1,21 +1,27 @@
 import { institutionAppConfig } from "./config";
 import {
   assignInstitutionVerificationReviewer,
+  cancelInstitutionVerificationRequest,
   cancelInstitutionOrganizationInvitation,
   changeInstitutionPassword as changeInstitutionUserPassword,
   createInstitutionOrganizationInvitation,
   getInstitutionAccountSessions,
   getInstitutionAccountSettings,
+  getInstitutionDashboard as fetchInstitutionDashboard,
+  getInstitutionNotificationCenter as fetchInstitutionNotificationCenter,
   getInstitutionOrganization,
   getInstitutionOrganizationPeople as fetchInstitutionOrganizationPeople,
   getInstitutionOrganizationPerson,
   getInstitutionOrganizationPersonCredentials,
+  getInstitutionOrganizationPersonPassportSummary,
   getInstitutionOrganizationPersonVerificationHistory,
   getInstitutionOrganizationVerificationRequests as fetchInstitutionOrganizationVerificationRequests,
   getInstitutionOrganizationTeam,
   getInstitutionVerificationEvidence,
   getInstitutionVerificationRequestDetail,
   getInstitutionVerificationTimeline,
+  markAllInstitutionNotificationsRead as markAllInstitutionNotificationsReadInBackend,
+  markInstitutionNotificationRead as markInstitutionNotificationReadInBackend,
   removeInstitutionOrganizationMember,
   rejectInstitutionVerificationRequest,
   revokeAllInstitutionAccountSessions,
@@ -27,6 +33,7 @@ import {
   updateInstitutionAccountNotificationPreferences,
   updateInstitutionCurrentUserProfile,
   updateInstitutionOrganization,
+  updateInstitutionVerificationPriority as updateInstitutionVerificationPriorityInBackend,
   updateInstitutionVerificationInternalNote,
   updateInstitutionOrganizationMemberRole,
   verifyInstitutionVerificationRequest,
@@ -44,6 +51,9 @@ import { buildInstitutionNotificationPreferencePayload } from "./settings";
 import type {
   EvidenceFile,
   InstitutionAccountPreferences,
+  InstitutionDashboard,
+  InstitutionNotificationCenter,
+  InstitutionPassportSummary,
   InstitutionPeopleDirectory,
   InstitutionTeam,
   InstitutionSettings,
@@ -53,13 +63,23 @@ import type {
   TeamInvitation,
   TeamMember,
   TimelineEvent,
+  VerificationPriority,
+  InstitutionVerificationInbox,
+  InstitutionVerificationInboxFilters,
   VerificationRequest,
   VerificationStatus,
 } from "./types";
 
 interface InstitutionRepository {
-  getVerificationRequests: (organizationId: string) => Promise<VerificationRequest[]>;
-  getVerificationRequest: (id: string) => Promise<VerificationRequest | undefined>;
+  getDashboard: (organizationId: string) => Promise<InstitutionDashboard>;
+  getVerificationRequests: (
+    organizationId: string,
+    filters?: InstitutionVerificationInboxFilters,
+  ) => Promise<InstitutionVerificationInbox>;
+  getVerificationRequest: (
+    organizationId: string,
+    id: string,
+  ) => Promise<VerificationRequest | undefined>;
   getVerificationEvidence: (id: string) => Promise<EvidenceFile[]>;
   getVerificationTimeline: (id: string) => Promise<TimelineEvent[]>;
   respondToVerification: (
@@ -80,6 +100,16 @@ interface InstitutionRepository {
     requestId: string,
     organizationMemberId?: string,
   ) => Promise<VerificationRequest | undefined>;
+  cancelVerification: (
+    organizationId: string,
+    requestId: string,
+    note?: string,
+  ) => Promise<VerificationRequest | undefined>;
+  updateVerificationPriority: (
+    organizationId: string,
+    requestId: string,
+    priority: VerificationPriority,
+  ) => Promise<VerificationRequest | undefined>;
   getPeople: (
     organizationId: string,
     filters?: {
@@ -94,6 +124,10 @@ interface InstitutionRepository {
     },
   ) => Promise<InstitutionPeopleDirectory>;
   getPerson: (organizationId: string, id: string) => Promise<Person | undefined>;
+  getPersonPassportSummary: (
+    organizationId: string,
+    id: string,
+  ) => Promise<InstitutionPassportSummary | undefined>;
   getPersonVerificationHistory: (
     organizationId: string,
     id: string,
@@ -127,6 +161,9 @@ interface InstitutionRepository {
     newPassword: string;
     confirmPassword: string;
   }) => Promise<void>;
+  getNotifications: () => Promise<InstitutionNotificationCenter>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   inviteTeamMember: (
     organizationId: string,
     email: string,
@@ -295,11 +332,79 @@ function assertMagicLinkUsable(state: DemoInstitutionState, token: string) {
 
 function demoInstitutionRepository(): InstitutionRepository {
   return {
-    async getVerificationRequests() {
+    async getDashboard() {
       const state = await getDemoInstitutionState();
-      return delay(cloneFixture(state.requests));
+      const pending = state.requests.filter((request) =>
+        ["pending", "in_progress", "awaiting_clarification"].includes(request.status),
+      );
+      return delay({
+        pendingVerifications: pending.length,
+        recentlyVerifiedCredentials: [],
+        verificationActivity: pending.slice(0, 5).map((request) => ({
+          requestId: request.id,
+          eventType: request.status,
+          eventSource: request.requestedBy,
+          createdAt: request.receivedAt,
+        })),
+        people: {
+          total: state.people.length,
+          currentStudent: state.people.filter(
+            (person) => person.institutionStatus === "current_student",
+          ).length,
+          alumni: state.people.filter((person) => person.institutionStatus === "alumni").length,
+          withdrawn: state.people.filter((person) => person.institutionStatus === "withdrawn")
+            .length,
+          inactive: state.people.filter((person) => person.institutionStatus === "inactive").length,
+        },
+        statistics: {
+          totalVerifications: state.requests.length,
+          verifiedVerifications: state.requests.filter((request) =>
+            ["verified", "confirmed"].includes(request.status),
+          ).length,
+          awaitingInformation: state.requests.filter((request) =>
+            ["awaiting_information", "awaiting_clarification"].includes(request.status),
+          ).length,
+          highPriority: state.requests.filter(
+            (request) => request.priority === "high" || request.priority === "urgent",
+          ).length,
+        },
+      });
     },
-    async getVerificationRequest(id) {
+    async getVerificationRequests(_organizationId, filters) {
+      const state = await getDemoInstitutionState();
+      let items = cloneFixture(state.requests);
+      if (filters?.search?.trim()) {
+        const needle = filters.search.trim().toLowerCase();
+        items = items.filter((request) =>
+          [request.candidateName, request.reference, request.requestPurpose]
+            .filter(Boolean)
+            .some((value) => value?.toLowerCase().includes(needle)),
+        );
+      }
+      if (filters?.status && filters.status !== "all") {
+        items = items.filter((request) => request.status === filters.status);
+      }
+      if (filters?.priority && filters.priority !== "all") {
+        items = items.filter((request) => request.priority === filters.priority);
+      }
+      if (filters?.requestType && filters.requestType !== "all") {
+        items = items.filter((request) => request.requestType === filters.requestType);
+      }
+      if (filters?.assignedToMe) {
+        items = items.filter((request) => request.isAssignedToCurrentUser);
+      }
+
+      return delay({
+        items,
+        total: items.length,
+        page: 1,
+        pageSize: items.length || 25,
+        totalPages: 1,
+        offset: 0,
+        limit: items.length || 25,
+      });
+    },
+    async getVerificationRequest(_organizationId, id) {
       const state = await getDemoInstitutionState();
       return delay(cloneFixture(state.requests.find((request) => request.id === id)));
     },
@@ -417,6 +522,36 @@ function demoInstitutionRepository(): InstitutionRepository {
 
       return delay(cloneFixture(state.requests[idx]));
     },
+    async cancelVerification(_organizationId, requestId, note) {
+      const state = await getDemoInstitutionState();
+      const { idx } = assertMutableRequest(state, requestId);
+      state.requests[idx] = {
+        ...state.requests[idx],
+        status: "cancelled",
+        timeline: [
+          ...state.requests[idx].timeline,
+          {
+            id: `timeline_${Date.now()}`,
+            at: new Date().toISOString(),
+            label: "Verification cancelled",
+            detail: note,
+          },
+        ],
+      };
+      return delay(cloneFixture(state.requests[idx]));
+    },
+    async updateVerificationPriority(_organizationId, requestId, priority) {
+      const state = await getDemoInstitutionState();
+      const idx = findRequestIndex(state, requestId);
+      if (idx === -1) {
+        throw notFoundError("This verification request could not be found.");
+      }
+      state.requests[idx] = {
+        ...state.requests[idx],
+        priority,
+      };
+      return delay(cloneFixture(state.requests[idx]));
+    },
     async getPeople() {
       const state = await getDemoInstitutionState();
       return delay({
@@ -427,6 +562,39 @@ function demoInstitutionRepository(): InstitutionRepository {
     async getPerson(_organizationId, id) {
       const state = await getDemoInstitutionState();
       return delay(cloneFixture(state.people.find((person) => person.id === id)));
+    },
+    async getPersonPassportSummary(_organizationId, id) {
+      const state = await getDemoInstitutionState();
+      const person = state.people.find((candidate) => candidate.id === id);
+      if (!person) {
+        throw notFoundError("This person could not be found.");
+      }
+
+      return delay({
+        personId: person.id,
+        displayName: person.name,
+        lifecycleStatus: person.institutionStatus,
+        degree: person.relationship.degree,
+        programme: person.relationship.programme,
+        department: person.relationship.department,
+        admissionPeriod: person.relationship.admissionPeriod,
+        graduationPeriod: person.relationship.graduationPeriod,
+        verificationStatus: person.trustStatus,
+        consentedProfessionalFields: person.sharedProfile.consentedFields ?? [],
+        professionalInformation: (person.sharedProfile.fields ?? []).map((field) => ({
+          field: field.field,
+          value: field.value,
+          consentedAt: field.consentedAt,
+          expiresAt: field.expiresAt,
+        })),
+        credentials: person.credentials.map((credential) => ({
+          id: credential.id,
+          title: credential.name,
+          credentialType: credential.credentialType || "credential",
+          status: credential.status,
+          issuedPeriod: credential.issuePeriod || credential.issueDate,
+        })),
+      });
     },
     async getPersonVerificationHistory(_organizationId, id) {
       const state = await getDemoInstitutionState();
@@ -519,6 +687,24 @@ function demoInstitutionRepository(): InstitutionRepository {
       return delay(undefined);
     },
     async changePassword() {
+      return delay(undefined);
+    },
+    async getNotifications() {
+      return delay({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
+        offset: 0,
+        limit: 10,
+        unreadCount: 0,
+      });
+    },
+    async markNotificationRead() {
+      return delay(undefined);
+    },
+    async markAllNotificationsRead() {
       return delay(undefined);
     },
     async inviteTeamMember(_organizationId, email, role) {
@@ -673,6 +859,9 @@ function demoInstitutionRepository(): InstitutionRepository {
 
 function unavailableInstitutionRepository(): InstitutionRepository {
   return {
+    async getDashboard() {
+      assertInstitutionBackend("Institution dashboard");
+    },
     async getVerificationRequests() {
       assertInstitutionBackend("Verification requests");
     },
@@ -697,10 +886,19 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async assignVerificationReviewer() {
       assertInstitutionBackend("Verification reviewer assignment");
     },
+    async cancelVerification() {
+      assertInstitutionBackend("Verification responses");
+    },
+    async updateVerificationPriority() {
+      assertInstitutionBackend("Verification priority");
+    },
     async getPeople() {
       assertInstitutionBackend("Institution people");
     },
     async getPerson() {
+      assertInstitutionBackend("Institution people");
+    },
+    async getPersonPassportSummary() {
       assertInstitutionBackend("Institution people");
     },
     async getPersonVerificationHistory() {
@@ -732,6 +930,15 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     },
     async changePassword() {
       assertInstitutionBackend("Institution settings");
+    },
+    async getNotifications() {
+      assertInstitutionBackend("Notification center");
+    },
+    async markNotificationRead() {
+      assertInstitutionBackend("Notification center");
+    },
+    async markAllNotificationsRead() {
+      assertInstitutionBackend("Notification center");
     },
     async inviteTeamMember() {
       assertInstitutionBackend("Institution team management");
@@ -765,11 +972,14 @@ function backendInstitutionRepository(): InstitutionRepository {
 
   return {
     ...unavailable,
-    async getVerificationRequests(organizationId) {
-      return fetchInstitutionOrganizationVerificationRequests(organizationId);
+    async getDashboard(organizationId) {
+      return fetchInstitutionDashboard(organizationId);
     },
-    async getVerificationRequest(id) {
-      return getInstitutionVerificationRequestDetail(id);
+    async getVerificationRequests(organizationId, filters) {
+      return fetchInstitutionOrganizationVerificationRequests(organizationId, filters);
+    },
+    async getVerificationRequest(organizationId, id) {
+      return getInstitutionVerificationRequestDetail(organizationId, id);
     },
     async getVerificationEvidence(id) {
       return getInstitutionVerificationEvidence(id);
@@ -807,11 +1017,20 @@ function backendInstitutionRepository(): InstitutionRepository {
         organizationMemberPublicId: organizationMemberId,
       });
     },
+    async cancelVerification(organizationId, requestId, note) {
+      return cancelInstitutionVerificationRequest(organizationId, requestId, { note });
+    },
+    async updateVerificationPriority(organizationId, requestId, priority) {
+      return updateInstitutionVerificationPriorityInBackend(organizationId, requestId, priority);
+    },
     async getPeople(organizationId, filters) {
       return fetchInstitutionOrganizationPeople(organizationId, filters);
     },
     async getPerson(organizationId, id) {
       return getInstitutionOrganizationPerson(organizationId, id);
+    },
+    async getPersonPassportSummary(organizationId, id) {
+      return getInstitutionOrganizationPersonPassportSummary(organizationId, id);
     },
     async getPersonVerificationHistory(organizationId, id) {
       return getInstitutionOrganizationPersonVerificationHistory(organizationId, id);
@@ -842,7 +1061,7 @@ function backendInstitutionRepository(): InstitutionRepository {
         workspace: {
           verificationPreferencesAvailable: false,
           integrationConnectionsAvailable: false,
-          sessionDeviceDetailsAvailable: false,
+          sessionDeviceDetailsAvailable: true,
           mfaAvailable: false,
           securityHistoryAvailable: false,
         },
@@ -867,6 +1086,15 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async changePassword(payload) {
       return changeInstitutionUserPassword(payload);
+    },
+    async getNotifications() {
+      return fetchInstitutionNotificationCenter();
+    },
+    async markNotificationRead(id) {
+      return markInstitutionNotificationReadInBackend(id);
+    },
+    async markAllNotificationsRead() {
+      return markAllInstitutionNotificationsReadInBackend();
     },
     async inviteTeamMember(organizationId, email, role) {
       return createInstitutionOrganizationInvitation(organizationId, {
@@ -968,16 +1196,24 @@ const publicVerificationRepository = institutionAppConfig.demoMode
   ? demoPublicVerificationRepository()
   : unavailablePublicVerificationRepository();
 
+export async function getInstitutionDashboard(
+  organizationId: string,
+): Promise<InstitutionDashboard> {
+  return institutionRepository.getDashboard(organizationId);
+}
+
 export async function getInstitutionVerificationRequests(
   organizationId: string,
-): Promise<VerificationRequest[]> {
-  return institutionRepository.getVerificationRequests(organizationId);
+  filters?: InstitutionVerificationInboxFilters,
+): Promise<InstitutionVerificationInbox> {
+  return institutionRepository.getVerificationRequests(organizationId, filters);
 }
 
 export async function getInstitutionVerificationRequest(
+  organizationId: string,
   id: string,
 ): Promise<VerificationRequest | undefined> {
-  return institutionRepository.getVerificationRequest(id);
+  return institutionRepository.getVerificationRequest(organizationId, id);
 }
 
 export async function respondToInstitutionVerification(
@@ -1005,8 +1241,9 @@ export async function addInternalNote(
 
 export async function getInstitutionOrganizationVerificationRequests(
   organizationId: string,
-): Promise<VerificationRequest[]> {
-  return institutionRepository.getVerificationRequests(organizationId);
+  filters?: InstitutionVerificationInboxFilters,
+): Promise<InstitutionVerificationInbox> {
+  return institutionRepository.getVerificationRequests(organizationId, filters);
 }
 
 export async function getInstitutionVerificationEvidenceItems(id: string): Promise<EvidenceFile[]> {
@@ -1024,6 +1261,22 @@ export async function assignInstitutionVerificationRequestReviewer(
   organizationMemberId?: string,
 ): Promise<VerificationRequest | undefined> {
   return institutionRepository.assignVerificationReviewer(requestId, organizationMemberId);
+}
+
+export async function cancelInstitutionVerification(
+  organizationId: string,
+  requestId: string,
+  note?: string,
+): Promise<VerificationRequest | undefined> {
+  return institutionRepository.cancelVerification(organizationId, requestId, note);
+}
+
+export async function setInstitutionVerificationPriority(
+  organizationId: string,
+  requestId: string,
+  priority: VerificationPriority,
+): Promise<VerificationRequest | undefined> {
+  return institutionRepository.updateVerificationPriority(organizationId, requestId, priority);
 }
 
 export async function getInstitutionPeople(
@@ -1047,6 +1300,13 @@ export async function getInstitutionPerson(
   id: string,
 ): Promise<Person | undefined> {
   return institutionRepository.getPerson(organizationId, id);
+}
+
+export async function getInstitutionPersonPassportSummary(
+  organizationId: string,
+  id: string,
+): Promise<InstitutionPassportSummary | undefined> {
+  return institutionRepository.getPersonPassportSummary(organizationId, id);
 }
 
 export async function getInstitutionPersonVerificationHistory(
@@ -1113,6 +1373,18 @@ export async function changeInstitutionPassword(payload: {
   confirmPassword: string;
 }) {
   return institutionRepository.changePassword(payload);
+}
+
+export async function getInstitutionNotifications(): Promise<InstitutionNotificationCenter> {
+  return institutionRepository.getNotifications();
+}
+
+export async function markInstitutionNotificationRead(id: string) {
+  return institutionRepository.markNotificationRead(id);
+}
+
+export async function markAllInstitutionNotificationsRead() {
+  return institutionRepository.markAllNotificationsRead();
 }
 
 export async function getPublicInstitutionVerificationByToken(

@@ -296,7 +296,7 @@ function PeoplePage() {
                       <TrustStatusBadge status={person.trustStatus} />
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs text-muted-foreground">Unavailable</span>
+                      <span className="text-xs text-muted-foreground">Summary on detail view</span>
                     </td>
                   </tr>
                 ))}

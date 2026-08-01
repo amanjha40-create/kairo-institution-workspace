@@ -25,49 +25,70 @@ async function renderRoute(path: string) {
   vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
 
   const verificationApi = {
-    getInstitutionOrganizationVerificationRequests: vi.fn().mockResolvedValue([
-      {
-        id: "vr_001",
-        reference: "VR-001",
-        candidateName: "Amina Rahman",
-        candidateId: "candidate_001",
-        candidateEmail: "amina.rahman@example.com",
-        requestedBy: "Candidate-submitted",
-        requestPurpose: "Education verification request",
-        status: "pending_organization_resolution",
-        receivedAt: "2026-07-24T10:00:00Z",
-        dueAt: "2026-07-29T10:00:00Z",
-        assignedTo: "Daniel Okafor",
-        nextAction: "Review and respond",
-        consentReceived: true,
-        claim: {
+    getInstitutionNotifications: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
+      offset: 0,
+      limit: 10,
+      unreadCount: 0,
+    }),
+    markInstitutionNotificationRead: vi.fn(),
+    markAllInstitutionNotificationsRead: vi.fn(),
+    getInstitutionOrganizationVerificationRequests: vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: "vr_001",
+          reference: "VR-001",
           candidateName: "Amina Rahman",
-          institutionName: "Northbridge University",
-          degree: "Bachelor of Science",
-          programme: "Computer Science",
-          department: "Engineering",
-          admissionYear: "2020",
-          graduationYear: "2024",
-          completionStatus: "Completed",
+          candidateId: "candidate_001",
+          candidateEmail: "amina.rahman@example.com",
+          requestedBy: "Northbridge University",
+          requestPurpose: "Education verification request",
+          status: "pending_organization_resolution",
+          priority: "high",
+          receivedAt: "2026-07-24T10:00:00Z",
+          dueAt: "2026-07-29T10:00:00Z",
+          assignedTo: "Daniel Okafor",
+          nextAction: "Review and respond",
+          consentReceived: true,
+          claim: {
+            candidateName: "Amina Rahman",
+            institutionName: "Northbridge University",
+            degree: "Bachelor of Science",
+            programme: "Computer Science",
+            department: "Engineering",
+            admissionYear: "2020",
+            graduationYear: "2024",
+            completionStatus: "Completed",
+          },
+          institutionRecord: { found: false },
+          matchStatus: "record_unavailable",
+          evidence: [],
+          internalNotes: [],
+          timeline: [],
+          source: "backend",
+          requestType: "education",
         },
-        institutionRecord: { found: false },
-        matchStatus: "record_unavailable",
-        evidence: [],
-        internalNotes: [],
-        timeline: [],
-        source: "backend",
-        requestType: "education",
-      },
-    ]),
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+      totalPages: 1,
+      offset: 0,
+      limit: 25,
+    }),
     getInstitutionVerificationRequest: vi.fn().mockResolvedValue({
       id: "vr_001",
       reference: "VR-001",
       candidateName: "Amina Rahman",
       candidateId: "candidate_001",
-      candidateEmail: "amina.rahman@example.com",
-      requestedBy: "Candidate-submitted",
+      requestedBy: "Northbridge University",
       requestPurpose: "Education verification request",
       status: "pending_organization_resolution",
+      priority: "urgent",
       receivedAt: "2026-07-24T10:00:00Z",
       dueAt: "2026-07-29T10:00:00Z",
       assignedTo: "Daniel Okafor",
@@ -85,8 +106,22 @@ async function renderRoute(path: string) {
         completionStatus: "Completed",
         additionalNote: "Candidate shared transcript and completion letter.",
       },
-      institutionRecord: { found: false },
-      matchStatus: "record_unavailable",
+      institutionRecord: {
+        found: true,
+        studentId: "NB-2020-014",
+        degree: "Bachelor of Science",
+        programme: "Computer Science",
+        department: "Engineering",
+        admissionDate: "2020-08-15",
+        graduationDate: "2024-06-15",
+        completionStatus: "verified",
+        credentialIssuanceStatus: "verified",
+      },
+      matchStatus: "exact",
+      fieldMatches: {
+        degree: "match",
+        programme: "match",
+      },
       evidence: [],
       internalNotes: [],
       timeline: [],
@@ -175,21 +210,25 @@ describe("institution verification routes", () => {
       await screen.findByRole("heading", { name: "Verification Requests" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Amina Rahman").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Candidate-submitted").length).toBeGreaterThan(0);
+    expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getAllByText("Daniel Okafor").length).toBeGreaterThan(0);
     expect(verificationApi.getInstitutionOrganizationVerificationRequests).toHaveBeenCalledWith(
       "inst_northbridge",
+      expect.objectContaining({ pageSize: 25, sortBy: "created_at" }),
     );
   });
 
-  it("renders backend detail data and shows institution-record comparison as unavailable", async () => {
+  it("renders backend detail data and uses the institution comparison contract", async () => {
     const verificationApi = await renderRoute("/institution/verifications/vr_001");
 
     expect(await screen.findByText("Candidate-submitted claim")).toBeInTheDocument();
-    expect(screen.getByText("Institution record comparison unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Exact Match")).toBeInTheDocument();
     expect(screen.getByText("Transcript.pdf")).toBeInTheDocument();
     expect(screen.getByText("Confirm graduation month before response.")).toBeInTheDocument();
-    expect(verificationApi.getInstitutionVerificationRequest).toHaveBeenCalledWith("vr_001");
+    expect(verificationApi.getInstitutionVerificationRequest).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "vr_001",
+    );
     expect(verificationApi.getInstitutionVerificationEvidenceItems).toHaveBeenCalledWith("vr_001");
     expect(verificationApi.getInstitutionVerificationTimelineItems).toHaveBeenCalledWith("vr_001");
   });

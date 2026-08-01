@@ -3,6 +3,7 @@ import type {
   InstitutionStatus,
   PassportStatus,
   TrustStatus,
+  VerificationPriority,
   VerificationStatus,
 } from "@/lib/institution/types";
 
@@ -63,6 +64,33 @@ export function VerificationStatusBadge({ status }: { status: VerificationStatus
       )}
     >
       {verificationLabels[status]}
+    </span>
+  );
+}
+
+const priorityLabels: Record<VerificationPriority, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+const priorityTones: Record<VerificationPriority, string> = {
+  low: "bg-slate-100 text-slate-700 ring-slate-200",
+  normal: "bg-sky-50 text-sky-800 ring-sky-200",
+  high: "bg-amber-50 text-amber-800 ring-amber-200",
+  urgent: "bg-rose-50 text-rose-800 ring-rose-200",
+};
+
+export function VerificationPriorityBadge({ priority }: { priority: VerificationPriority }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+        priorityTones[priority],
+      )}
+    >
+      {priorityLabels[priority]}
     </span>
   );
 }

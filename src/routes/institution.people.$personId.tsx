@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import {
   getInstitutionPerson,
   getInstitutionPersonCredentials,
+  getInstitutionPersonPassportSummary,
   getInstitutionPersonVerificationHistory,
 } from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
@@ -70,6 +71,18 @@ function PersonDetailPage() {
     enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
   });
 
+  const passportSummaryQuery = useQuery({
+    queryKey: institutionQueryKeys.personPassportSummary(organizationId, personId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionPersonPassportSummary(organizationId, personId);
+    },
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
+  });
+
   if (!permissions.canViewPeople) {
     return <PermissionDeniedState />;
   }
@@ -128,6 +141,7 @@ function PersonDetailPage() {
   const consentedFields = person.sharedProfile.consentedFields ?? [];
   const credentials = credentialsQuery.data ?? person.credentials;
   const verificationHistory = verificationHistoryQuery.data ?? person.verificationActivity;
+  const passportSummary = passportSummaryQuery.data;
 
   return (
     <div className="space-y-6">
@@ -222,6 +236,78 @@ function PersonDetailPage() {
           )}
         </Section>
       </div>
+
+      <Section title="Passport summary">
+        {passportSummaryQuery.isLoading ? (
+          <LoadingState />
+        ) : passportSummaryQuery.isError ? (
+          <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
+            <div className="font-medium">Passport summary unavailable</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The authoritative institution passport summary could not be loaded right now.
+            </p>
+          </div>
+        ) : !passportSummary ? (
+          <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
+            <div className="font-medium">Passport summary unavailable</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The backend did not return an institution passport summary for this person.
+            </p>
+          </div>
+        ) : (
+          <>
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <FieldCell label="Degree" value={passportSummary.degree} />
+              <FieldCell label="Programme" value={passportSummary.programme} />
+              <FieldCell label="Department" value={passportSummary.department} />
+              <FieldCell
+                label="Verification"
+                value={<TrustStatusBadge status={passportSummary.verificationStatus} />}
+              />
+              <FieldCell label="Admission" value={passportSummary.admissionPeriod} />
+              <FieldCell label="Graduation" value={passportSummary.graduationPeriod} />
+            </dl>
+            <div className="mt-3">
+              <div className="text-xs text-muted-foreground">Consented professional fields</div>
+              {passportSummary.consentedProfessionalFields.length === 0 ? (
+                <div className="mt-1 text-sm text-muted-foreground">
+                  No fields currently shared.
+                </div>
+              ) : (
+                <ul className="mt-1 flex flex-wrap gap-1.5">
+                  {passportSummary.consentedProfessionalFields.map((field) => (
+                    <li
+                      key={field}
+                      className="inline-flex items-center rounded-full bg-[color:var(--kairo-teal-soft)] px-2 py-0.5 text-xs font-medium text-[color:var(--kairo-navy-deep)]"
+                    >
+                      {field === "current_title" ? "Current title" : "Current company"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="text-xs text-muted-foreground">Professional information</div>
+              {passportSummary.professionalInformation.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No consented professional information.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {passportSummary.professionalInformation.map((item) => (
+                    <li key={`${item.field}-${item.consentedAt}`} className="text-sm">
+                      <span className="font-medium">
+                        {item.field === "current_title" ? "Current title" : "Current company"}:
+                      </span>{" "}
+                      {item.value}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </Section>
 
       <Section title="Institution credentials">
         {credentialsQuery.isLoading ? (
