@@ -205,12 +205,12 @@ function LoginPage() {
                   : "Sign in"}
             </Button>
           </form>
-        {institutionDemoModeEnabled && isDemoMode && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Demo Mode is enabled. Use a configured demo institution staff email and the demo
-            password to preview the workspace.
-          </div>
-        )}
+          {institutionDemoModeEnabled && isDemoMode && (
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Demo Mode is enabled. Use a configured demo institution staff email and the demo
+              password to preview the workspace.
+            </div>
+          )}
           {!institutionAppConfig.demoMode && !institutionAppConfig.backendConfigured && (
             <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Institution sign-in is not live yet. Production mode stays closed until the approved

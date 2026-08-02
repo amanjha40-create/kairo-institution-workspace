@@ -942,7 +942,7 @@ function mapInstitutionVerificationDetail(
       institutionName: claim.institution_name || "—",
       degree: claim.degree || "—",
       programme: claim.programme || "—",
-      department: record.department || "—",
+      department: "—",
       admissionYear: formatInstitutionPeriodValue(claim.admission),
       graduationYear: formatInstitutionPeriodValue(claim.graduation),
       completionStatus: getVerificationRequestTypeLabel(payload.request_type),
