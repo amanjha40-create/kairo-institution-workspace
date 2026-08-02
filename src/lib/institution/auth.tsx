@@ -13,9 +13,9 @@ import { institutionAppConfig } from "./config";
 import { apiNotConfiguredError, invalidCredentialsError, type InstitutionError } from "./errors";
 import type { InstitutionWorkspaceBootstrap, Session } from "./types";
 
+const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
 const DEMO_SESSION_KEY = "kairo.institution.demo.session";
-const loadDemoFixtures =
-  import.meta.env.VITE_DEMO_MODE === "true" ? () => import("./mock-data") : null;
+const loadDemoFixtures = DEMO_BUILD ? () => import("./mock-data") : null;
 
 export interface InstitutionAuthState {
   session: Session | null;
@@ -214,7 +214,7 @@ async function resolveProductionAuthState(forceRefresh = false): Promise<Institu
 }
 
 function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
-  if (institutionAppConfig.demoMode) {
+  if (DEMO_BUILD) {
     return {
       async signIn(email: string, password: string) {
         if (password !== "demo-password") {

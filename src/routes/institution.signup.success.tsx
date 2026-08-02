@@ -12,6 +12,8 @@ import {
   type WorkspaceApplication,
 } from "@/lib/institution/signup";
 
+const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
+
 export const Route = createFileRoute("/institution/signup/success")({
   head: () => ({
     meta: [
@@ -54,17 +56,6 @@ function SuccessPage() {
 
   const institutionName = app?.institution.name || "your institution";
 
-  const previewApproved = async () => {
-    if (!app) return;
-    const { createMockApprovedInstitutionSession } = await import("@/lib/institution/signup");
-    createMockApprovedInstitutionSession({
-      name: app.administrator.fullName || "Institution Admin",
-      email: app.administrator.workEmail || "admin@example.edu",
-      institutionName: app.institution.name || "Your Institution",
-    });
-    navigate({ to: "/institution/verifications" });
-  };
-
   return (
     <SignupShell step="review" title="Institution workspace request submitted">
       <div className="space-y-6">
@@ -104,7 +95,7 @@ function SuccessPage() {
           )}
         </div>
 
-        {institutionDemoModeEnabled && (
+        {DEMO_BUILD && institutionDemoModeEnabled && (
           <div className="rounded-xl border border-dashed border-[color:var(--kairo-navy-deep)]/30 bg-[color:var(--kairo-teal-soft)]/40 p-4">
             <div className="flex items-start gap-3">
               <Sparkles className="mt-0.5 h-4 w-4 text-[color:var(--kairo-navy-deep)]" />
@@ -121,7 +112,17 @@ function SuccessPage() {
                   size="sm"
                   className="mt-3"
                   onClick={() => {
-                    void previewApproved();
+                    void (async () => {
+                      if (!app) return;
+                      const { createMockApprovedInstitutionSession } =
+                        await import("@/lib/institution/signup-demo");
+                      createMockApprovedInstitutionSession({
+                        name: app.administrator.fullName || "Institution Admin",
+                        email: app.administrator.workEmail || "admin@example.edu",
+                        institutionName: app.institution.name || "Your Institution",
+                      });
+                      navigate({ to: "/institution/verifications" });
+                    })();
                   }}
                   disabled={!app}
                 >

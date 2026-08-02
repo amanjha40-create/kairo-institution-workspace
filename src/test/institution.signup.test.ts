@@ -8,6 +8,14 @@ async function importSignupModule(demoMode: "true" | "false") {
   return import("@/lib/institution/signup");
 }
 
+async function importSignupDemoModule(demoMode: "true" | "false") {
+  vi.resetModules();
+  vi.stubEnv("VITE_APP_ENV", "test");
+  vi.stubEnv("VITE_DEMO_MODE", demoMode);
+  vi.stubEnv("VITE_API_BASE_URL", "");
+  return import("@/lib/institution/signup-demo");
+}
+
 describe("institution signup storage", () => {
   it("never persists passwords in the signup draft", async () => {
     const signup = await importSignupModule("true");
@@ -33,10 +41,10 @@ describe("institution signup storage", () => {
   });
 
   it("keeps demo-only workspace preview unavailable when demo mode is disabled", async () => {
-    const signup = await importSignupModule("false");
+    const signupDemo = await importSignupDemoModule("false");
 
     expect(() =>
-      signup.createMockApprovedInstitutionSession({
+      signupDemo.createMockApprovedInstitutionSession({
         name: "Priya Menon",
         email: "priya.menon@northbridge.edu",
         institutionName: "Northbridge University",

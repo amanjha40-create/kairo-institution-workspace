@@ -10,8 +10,8 @@ import {
 } from "./backend";
 import { institutionAppConfig } from "./config";
 import { apiNotConfiguredError, validationError } from "./errors";
-import type { Session } from "./types";
 
+const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
 export type InstitutionType =
   | "University"
   | "College"
@@ -114,7 +114,6 @@ interface PersistedInstitutionSignupDraft {
 
 const DRAFT_KEY = "kairo.institution.signup.draft";
 const APPLICATION_KEY = "kairo.institution.signup.application";
-const DEMO_SESSION_KEY = "kairo.institution.demo.session";
 
 const PERSONAL_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -367,7 +366,7 @@ export async function requestInstitutionEmailVerification(): Promise<{
   ok: true;
   sentTo: string;
 }> {
-  if (institutionAppConfig.demoMode) {
+  if (DEMO_BUILD) {
     const current = getInstitutionSignupDraft() ?? emptyDraft();
     const next = persistDraft({
       ...current,
@@ -448,7 +447,7 @@ export async function requestInstitutionEmailVerification(): Promise<{
 export async function verifyInstitutionEmailCode(
   code: string,
 ): Promise<{ ok: boolean; status: EmailVerificationStatus }> {
-  if (institutionAppConfig.demoMode) {
+  if (DEMO_BUILD) {
     const current = getInstitutionSignupDraft() ?? emptyDraft();
     const ok = /^\d{6}$/.test(code.trim());
     const status: EmailVerificationStatus = ok ? "verified" : "failed";
@@ -494,7 +493,7 @@ export async function verifyInstitutionEmailCode(
 export async function submitInstitutionWorkspaceApplication(): Promise<WorkspaceApplication> {
   const draft = getInstitutionSignupDraft() ?? emptyDraft();
 
-  if (institutionAppConfig.demoMode) {
+  if (DEMO_BUILD) {
     const status: WorkspaceApplicationStatus =
       draft.verification.method === "email" && draft.verification.emailStatus === "verified"
         ? "verification_pending"
@@ -565,29 +564,4 @@ export function statusLabel(status: WorkspaceApplicationStatus): string {
     case "rejected":
       return "Rejected";
   }
-}
-
-export function createMockApprovedInstitutionSession(input: {
-  name: string;
-  email: string;
-  institutionName: string;
-}): void {
-  if (!institutionAppConfig.demoMode || typeof window === "undefined") {
-    throw apiNotConfiguredError("Institution workspace preview");
-  }
-
-  const session: Session = {
-    userId: `u_demo_${Date.now()}`,
-    membershipId: `membership_demo_${Date.now()}`,
-    institutionId: `inst_demo_${Date.now()}`,
-    name: input.name || "Institution Admin",
-    email: input.email || "admin@example.edu",
-    role: "owner",
-    institutionName: input.institutionName || "Your Institution",
-    accountStatus: "active",
-    workspaceStatus: "active",
-    expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-  };
-
-  window.sessionStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
 }

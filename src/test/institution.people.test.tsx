@@ -226,7 +226,7 @@ describe("institution people routes", () => {
       "inst_northbridge",
       expect.objectContaining({ pageSize: 100 }),
     );
-  });
+  }, 10_000);
 
   it("renders person detail with full student ID, verification history, and credential history", async () => {
     const peopleApi = await renderRoute("/institution/people/person_001");

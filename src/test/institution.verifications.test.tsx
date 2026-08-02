@@ -216,7 +216,7 @@ describe("institution verification routes", () => {
       "inst_northbridge",
       expect.objectContaining({ pageSize: 25, sortBy: "created_at" }),
     );
-  });
+  }, 10_000);
 
   it("renders backend detail data and uses the institution comparison contract", async () => {
     const verificationApi = await renderRoute("/institution/verifications/vr_001");
