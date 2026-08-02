@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { KairoLogo } from "@/components/institution/Logo";
 import { ShieldCheck } from "lucide-react";
-import { institutionDemoModeEnabled } from "@/lib/institution/config";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -49,19 +48,9 @@ function Home() {
           >
             <ShieldCheck className="h-4 w-4" /> Explore Kairo for Institutions
           </Link>
-          {institutionDemoModeEnabled ? (
-            <Link
-              to="/institution/verify/$token"
-              params={{ token: "valid-token" }}
-              className="inline-flex items-center rounded-md border border-border bg-white px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary"
-            >
-              Demo preview link
-            </Link>
-          ) : (
-            <div className="rounded-md border border-border bg-white px-4 py-2 text-sm text-muted-foreground">
-              One-time reviewers must use the unique secure link sent to them.
-            </div>
-          )}
+          <div className="rounded-md border border-border bg-white px-4 py-2 text-sm text-muted-foreground">
+            One-time reviewers must use the unique secure link sent to them.
+          </div>
         </div>
       </div>
     </div>

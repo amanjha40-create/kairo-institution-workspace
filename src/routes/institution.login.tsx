@@ -205,12 +205,12 @@ function LoginPage() {
                   : "Sign in"}
             </Button>
           </form>
-          {institutionDemoModeEnabled && isDemoMode && (
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Demo Mode is enabled. Use a Northbridge University team email and the demo password to
-              preview the workspace.
-            </div>
-          )}
+        {institutionDemoModeEnabled && isDemoMode && (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Demo Mode is enabled. Use a configured demo institution staff email and the demo
+            password to preview the workspace.
+          </div>
+        )}
           {!institutionAppConfig.demoMode && !institutionAppConfig.backendConfigured && (
             <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Institution sign-in is not live yet. Production mode stays closed until the approved
@@ -229,19 +229,6 @@ function LoginPage() {
           Responding to a one-off request? Use the unique secure verification link sent to your
           institution.
         </p>
-        {institutionDemoModeEnabled && isDemoMode && (
-          <p className="mt-2 text-center text-xs text-amber-900">
-            Demo preview:{" "}
-            <Link
-              to="/institution/verify/$token"
-              params={{ token: "valid-token" }}
-              className="underline underline-offset-2"
-            >
-              open the sample magic-link request
-            </Link>
-            .
-          </p>
-        )}
         <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs">
           <span className="text-muted-foreground">
             New to Kairo?{" "}

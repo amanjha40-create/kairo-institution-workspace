@@ -1,18 +1,15 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SignupShell } from "@/components/institution/SignupShell";
 import { EmptyState } from "@/components/institution/PageStates";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { useInstitutionAuth } from "@/lib/institution/auth";
-import { institutionDemoModeEnabled } from "@/lib/institution/config";
 import {
   getInstitutionWorkspaceApplication,
   statusLabel,
   type WorkspaceApplication,
 } from "@/lib/institution/signup";
-
-const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
 
 export const Route = createFileRoute("/institution/signup/success")({
   head: () => ({
@@ -30,7 +27,6 @@ export const Route = createFileRoute("/institution/signup/success")({
 });
 
 function SuccessPage() {
-  const navigate = useNavigate();
   const { session } = useInstitutionAuth();
   const [app, setApp] = useState<WorkspaceApplication | null>(null);
 
@@ -40,7 +36,7 @@ function SuccessPage() {
 
   if (!app) {
     return (
-      <SignupShell step="review" title="No demo workspace request found">
+      <SignupShell step="review" title="No signup request found">
         <EmptyState
           title="No signup request found"
           description="Complete the institution signup flow first to preview the success state."
@@ -94,44 +90,6 @@ function SuccessPage() {
             </Button>
           )}
         </div>
-
-        {DEMO_BUILD && institutionDemoModeEnabled && (
-          <div className="rounded-xl border border-dashed border-[color:var(--kairo-navy-deep)]/30 bg-[color:var(--kairo-teal-soft)]/40 p-4">
-            <div className="flex items-start gap-3">
-              <Sparkles className="mt-0.5 h-4 w-4 text-[color:var(--kairo-navy-deep)]" />
-              <div className="flex-1">
-                <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--kairo-navy-deep)]">
-                  Demo Mode only
-                </div>
-                <p className="mt-1 text-xs text-[color:var(--kairo-navy-deep)]/80">
-                  Simulate an approved workspace to preview the reviewer experience. This action is
-                  hidden whenever Demo Mode is disabled.
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    void (async () => {
-                      if (!app) return;
-                      const { createMockApprovedInstitutionSession } =
-                        await import("@/lib/institution/signup-demo");
-                      createMockApprovedInstitutionSession({
-                        name: app.administrator.fullName || "Institution Admin",
-                        email: app.administrator.workEmail || "admin@example.edu",
-                        institutionName: app.institution.name || "Your Institution",
-                      });
-                      navigate({ to: "/institution/verifications" });
-                    })();
-                  }}
-                  disabled={!app}
-                >
-                  Preview approved workspace
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </SignupShell>
   );

@@ -8,14 +8,6 @@ async function importSignupModule(demoMode: "true" | "false") {
   return import("@/lib/institution/signup");
 }
 
-async function importSignupDemoModule(demoMode: "true" | "false") {
-  vi.resetModules();
-  vi.stubEnv("VITE_APP_ENV", "test");
-  vi.stubEnv("VITE_DEMO_MODE", demoMode);
-  vi.stubEnv("VITE_API_BASE_URL", "");
-  return import("@/lib/institution/signup-demo");
-}
-
 describe("institution signup storage", () => {
   it("never persists passwords in the signup draft", async () => {
     const signup = await importSignupModule("true");
@@ -38,19 +30,6 @@ describe("institution signup storage", () => {
     expect(signup.getInstitutionSignupDraft()?.administrator.password).toBe(
       "super-secret-password",
     );
-  });
-
-  it("keeps demo-only workspace preview unavailable when demo mode is disabled", async () => {
-    const signupDemo = await importSignupDemoModule("false");
-
-    expect(() =>
-      signupDemo.createMockApprovedInstitutionSession({
-        name: "Priya Menon",
-        email: "priya.menon@northbridge.edu",
-        institutionName: "Northbridge University",
-      }),
-    ).toThrowError();
-    expect(window.sessionStorage.getItem("kairo.institution.demo.session")).toBeNull();
   });
 
   it("uses signup start for the initial OTP request without forcing an immediate resend", async () => {
