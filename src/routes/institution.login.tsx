@@ -5,6 +5,7 @@ import { KairoLogo } from "@/components/institution/Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig, institutionDemoModeEnabled } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
+import { getInstitutionSignupContinuationPath } from "@/lib/institution/signup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,7 +58,7 @@ function LoginPage() {
       navigate({
         to: nextSession
           ? (search.redirect ?? "/institution/verifications")
-          : "/institution/signup/institution",
+          : getInstitutionSignupContinuationPath(),
         replace: true,
       });
     } catch (err) {

@@ -133,6 +133,94 @@ describe("institution routing and permissions", () => {
     ).toBeInTheDocument();
   });
 
+  it("resumes verification for authenticated users with an incomplete signup draft", async () => {
+    window.localStorage.setItem(
+      "kairo.institution.signup.draft",
+      JSON.stringify({
+        id: "draft_resume",
+        institution: {
+          name: "Northbridge University",
+          type: "University",
+          website: "https://northbridge.edu",
+          domain: "northbridge.edu",
+          country: "India",
+          city: "Delhi",
+          verificationEmail: "verify@northbridge.edu",
+        },
+        administrator: {
+          fullName: "Priya Menon",
+          jobTitle: "Registrar",
+          workEmail: "priya.menon@northbridge.edu",
+          authorized: true,
+        },
+        verification: {
+          method: "email",
+          emailStatus: "code_sent",
+        },
+        acceptedTerms: false,
+        acceptedPrivacy: false,
+        acceptedAuthority: false,
+        updatedAt: "2026-08-03T12:00:00.000Z",
+      }),
+    );
+
+    await renderRoute("/institution/verifications", {
+      session: null,
+      authenticated: true,
+      bootstrap: noOrgBootstrap(),
+      demoMode: "false",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Verify your institution" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not let a stale signup draft override an active institution workspace", async () => {
+    window.localStorage.setItem(
+      "kairo.institution.signup.draft",
+      JSON.stringify({
+        id: "draft_stale",
+        institution: {
+          name: "Stale University",
+          type: "University",
+          website: "https://stale.example.edu",
+          domain: "stale.example.edu",
+          country: "India",
+          city: "Delhi",
+          verificationEmail: "verify@stale.example.edu",
+        },
+        administrator: {
+          fullName: "Stale Owner",
+          jobTitle: "Registrar",
+          workEmail: "stale.owner@stale.example.edu",
+          authorized: true,
+        },
+        verification: {
+          method: "email",
+          emailStatus: "code_sent",
+        },
+        acceptedTerms: false,
+        acceptedPrivacy: false,
+        acceptedAuthority: false,
+        updatedAt: "2026-08-03T12:00:00.000Z",
+      }),
+    );
+
+    await renderRoute("/institution/verifications", {
+      session: ownerSession(),
+      authenticated: true,
+      demoMode: "true",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Verification Requests" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Verify your institution" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("prevents a reviewer from accessing owner-only team actions", async () => {
     await renderRoute("/institution/team", {
       session: reviewerSession(),

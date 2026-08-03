@@ -116,6 +116,12 @@ interface PersistedInstitutionSignupDraft {
 
 const DRAFT_KEY = "kairo.institution.signup.draft";
 const APPLICATION_KEY = "kairo.institution.signup.application";
+export const INSTITUTION_SIGNUP_ROUTES = {
+  institution: "/institution/signup/institution",
+  admin: "/institution/signup/admin",
+  verify: "/institution/signup/verify",
+  review: "/institution/signup/review",
+} as const;
 
 const PERSONAL_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -401,6 +407,49 @@ async function resolveAccessTokenForOnboarding(draft: InstitutionSignupDraft) {
 
 export function getInstitutionSignupDraft(): InstitutionSignupDraft | null {
   return hydrateDraft(safeRead<PersistedInstitutionSignupDraft>(DRAFT_KEY));
+}
+
+export function getInstitutionSignupContinuationPath(): (typeof INSTITUTION_SIGNUP_ROUTES)[keyof typeof INSTITUTION_SIGNUP_ROUTES] {
+  const draft = getInstitutionSignupDraft();
+  if (!draft) {
+    return INSTITUTION_SIGNUP_ROUTES.institution;
+  }
+
+  const hasInstitutionDetails = Boolean(
+    draft.institution.name.trim() ||
+    draft.institution.type ||
+    draft.institution.website.trim() ||
+    draft.institution.domain.trim() ||
+    draft.institution.country.trim() ||
+    draft.institution.city.trim() ||
+    draft.institution.verificationEmail.trim(),
+  );
+
+  const hasAdministratorDetails = Boolean(
+    draft.administrator.fullName.trim() ||
+    draft.administrator.jobTitle.trim() ||
+    draft.administrator.workEmail.trim() ||
+    draft.administrator.authorized,
+  );
+
+  const readyForReview =
+    draft.verification.emailStatus === "verified" ||
+    draft.verification.method === "manual" ||
+    draft.verification.method === "domain";
+
+  if (readyForReview) {
+    return INSTITUTION_SIGNUP_ROUTES.review;
+  }
+
+  if (hasAdministratorDetails) {
+    return INSTITUTION_SIGNUP_ROUTES.verify;
+  }
+
+  if (hasInstitutionDetails) {
+    return INSTITUTION_SIGNUP_ROUTES.admin;
+  }
+
+  return INSTITUTION_SIGNUP_ROUTES.institution;
 }
 
 export function createInstitutionSignupDraft(): InstitutionSignupDraft {

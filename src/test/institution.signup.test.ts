@@ -153,4 +153,46 @@ describe("institution signup storage", () => {
     expect(draft?.institution.name).toBe("Northbridge University");
     expect(draft?.administrator.password).toBe("super-secret-password");
   });
+
+  it("derives the correct onboarding continuation step from safe draft fields", async () => {
+    const signup = await importSignupModule("false");
+
+    expect(signup.getInstitutionSignupContinuationPath()).toBe(
+      signup.INSTITUTION_SIGNUP_ROUTES.institution,
+    );
+
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionDetails({
+      name: "Northbridge University",
+      type: "University",
+      website: "https://northbridge.edu",
+      domain: "northbridge.edu",
+      country: "India",
+      city: "Delhi",
+      verificationEmail: "verify@northbridge.edu",
+    });
+    expect(signup.getInstitutionSignupContinuationPath()).toBe(
+      signup.INSTITUTION_SIGNUP_ROUTES.admin,
+    );
+
+    signup.updateInstitutionAdministrator({
+      fullName: "Priya Menon",
+      jobTitle: "Registrar",
+      workEmail: "priya.menon@northbridge.edu",
+      authorized: true,
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+    expect(signup.getInstitutionSignupContinuationPath()).toBe(
+      signup.INSTITUTION_SIGNUP_ROUTES.verify,
+    );
+
+    signup.updateInstitutionVerification({
+      method: "email",
+      emailStatus: "verified",
+    });
+    expect(signup.getInstitutionSignupContinuationPath()).toBe(
+      signup.INSTITUTION_SIGNUP_ROUTES.review,
+    );
+  });
 });
