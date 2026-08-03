@@ -10,6 +10,7 @@ import { CheckCircle2, Globe, Mail, ShieldAlert, ShieldCheck } from "lucide-reac
 import {
   extractDomain,
   getInstitutionSignupDraft,
+  recoverInstitutionEmailVerificationSession,
   requestInstitutionEmailVerification,
   updateInstitutionVerification,
   verifyInstitutionEmailCode,
@@ -45,18 +46,46 @@ function VerifyStep() {
   const [verifying, setVerifying] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    const draft = getInstitutionSignupDraft();
-    if (!draft) {
-      navigate({ to: "/institution/signup/institution", replace: true });
+    const syncDraftState = () => {
+      const draft = getInstitutionSignupDraft();
+      if (!draft) {
+        navigate({ to: "/institution/signup/institution", replace: true });
+        return false;
+      }
+      setMethod(draft.verification.method);
+      setEmailStatus(draft.verification.emailStatus);
+      setInstitutionDomain(draft.institution.domain);
+      setAdminEmail(draft.administrator.workEmail);
+      setNote(draft.verification.manualNote ?? "");
+      return true;
+    };
+
+    if (!syncDraftState()) {
       return;
     }
-    setMethod(draft.verification.method);
-    setEmailStatus(draft.verification.emailStatus);
-    setInstitutionDomain(draft.institution.domain);
-    setAdminEmail(draft.administrator.workEmail);
-    setNote(draft.verification.manualNote ?? "");
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const recovery = await recoverInstitutionEmailVerificationSession();
+        if (!cancelled && recovery.recovered) {
+          syncDraftState();
+          setNotice(recovery.message ?? null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          syncDraftState();
+          setError(getInstitutionErrorMessage(err));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   const domainMatch =
@@ -72,10 +101,12 @@ function VerifyStep() {
 
   const sendCode = async () => {
     setError(null);
+    setNotice(null);
     setSending(true);
     try {
-      await requestInstitutionEmailVerification();
+      const result = await requestInstitutionEmailVerification();
       setEmailStatus("code_sent");
+      setNotice(result.message ?? null);
     } catch (err) {
       setError(getInstitutionErrorMessage(err));
     } finally {
@@ -251,6 +282,11 @@ function VerifyStep() {
           )}
         </MethodCard>
       </div>
+      {notice && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          {notice}
+        </div>
+      )}
       {error && (
         <div
           role="alert"

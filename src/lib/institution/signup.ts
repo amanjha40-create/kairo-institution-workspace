@@ -9,7 +9,7 @@ import {
   verifyOrganizationStaffSignupEmail,
 } from "./backend";
 import { institutionAppConfig } from "./config";
-import { apiNotConfiguredError, validationError } from "./errors";
+import { apiNotConfiguredError, isInstitutionError, validationError } from "./errors";
 
 const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
 export type InstitutionType =
@@ -61,6 +61,7 @@ export interface InstitutionVerification {
   emailMasked?: string;
   resendAfterSeconds?: number;
   expiresInSeconds?: number;
+  sessionIssuedAt?: string;
 }
 
 export interface InstitutionSignupDraft {
@@ -99,6 +100,7 @@ interface PersistedInstitutionVerification {
   emailMasked?: string;
   resendAfterSeconds?: number;
   expiresInSeconds?: number;
+  sessionIssuedAt?: string;
 }
 
 interface PersistedInstitutionSignupDraft {
@@ -248,6 +250,111 @@ function persistDraft(draft: InstitutionSignupDraft): InstitutionSignupDraft {
   return next;
 }
 
+function hasStoredInstitutionSession() {
+  return getStoredInstitutionAuthTokens() !== null;
+}
+
+function clearStaleVerificationState(
+  draft: InstitutionSignupDraft,
+  nextStatus: EmailVerificationStatus = "not_started",
+) {
+  return persistDraft({
+    ...draft,
+    verification: {
+      ...draft.verification,
+      emailStatus: nextStatus,
+      signupSessionId: undefined,
+      emailMasked: undefined,
+      resendAfterSeconds: undefined,
+      expiresInSeconds: undefined,
+      sessionIssuedAt: undefined,
+      emailCode: undefined,
+    },
+  });
+}
+
+function canRestartInstitutionVerification(draft: InstitutionSignupDraft) {
+  return (
+    !!draft.administrator.fullName.trim() &&
+    !!draft.administrator.workEmail.trim() &&
+    (!!draft.administrator.password.trim() || hasStoredInstitutionSession())
+  );
+}
+
+function shouldTreatAsStaleVerificationSession(error: unknown) {
+  if (!isInstitutionError(error)) {
+    return false;
+  }
+
+  return (
+    (error.status === 404 && error.message === "Signup session not found") ||
+    (error.status === 401 && error.message === "Invalid or expired verification code")
+  );
+}
+
+function isVerificationSessionLocallyExpired(draft: InstitutionSignupDraft) {
+  const expiresInSeconds = draft.verification.expiresInSeconds;
+  const sessionIssuedAt = draft.verification.sessionIssuedAt;
+
+  if (!expiresInSeconds || !sessionIssuedAt) {
+    return false;
+  }
+
+  return new Date(sessionIssuedAt).getTime() + expiresInSeconds * 1000 <= Date.now();
+}
+
+async function startInstitutionVerificationSession(
+  current: InstitutionSignupDraft,
+  emailMasked: string,
+) {
+  const started = await startOrganizationStaffSignup({
+    fullName: current.administrator.fullName,
+    workEmail: current.administrator.workEmail,
+    password: current.administrator.password || undefined,
+  });
+  persistDraft({
+    ...current,
+    verification: {
+      ...current.verification,
+      method: "email",
+      emailStatus: started.emailVerified ? "verified" : "code_sent",
+      signupSessionId: started.signupSessionId,
+      emailMasked: started.emailMasked || emailMasked,
+      resendAfterSeconds: started.resendAfterSeconds,
+      expiresInSeconds: started.expiresInSeconds,
+      sessionIssuedAt: new Date().toISOString(),
+    },
+  });
+
+  return {
+    ok: true as const,
+    recovered: false,
+    sentTo: started.emailMasked || emailMasked,
+  };
+}
+
+async function restartInstitutionVerificationSession(
+  current: InstitutionSignupDraft,
+  message = "Your verification session expired. We sent a new code.",
+) {
+  const reset = clearStaleVerificationState(current);
+  if (!canRestartInstitutionVerification(reset)) {
+    throw validationError(
+      "Your verification session expired. Return to the administrator step to confirm your details and request a new code.",
+    );
+  }
+
+  const restarted = await startInstitutionVerificationSession(
+    reset,
+    reset.administrator.workEmail || current.administrator.workEmail,
+  );
+  return {
+    ...restarted,
+    recovered: true as const,
+    message,
+  };
+}
+
 function buildApplication(
   draft: InstitutionSignupDraft,
   status: WorkspaceApplicationStatus,
@@ -365,6 +472,8 @@ export function updateSignupAcknowledgements(patch: {
 export async function requestInstitutionEmailVerification(): Promise<{
   ok: true;
   sentTo: string;
+  recovered?: boolean;
+  message?: string;
 }> {
   if (DEMO_BUILD) {
     const current = getInstitutionSignupDraft() ?? emptyDraft();
@@ -388,7 +497,7 @@ export async function requestInstitutionEmailVerification(): Promise<{
   if (
     !current.administrator.fullName.trim() ||
     !current.administrator.workEmail.trim() ||
-    !current.administrator.password.trim()
+    (!current.administrator.password.trim() && !hasStoredInstitutionSession())
   ) {
     throw validationError(
       "Return to the administrator step and complete the required details before verifying the work email.",
@@ -399,31 +508,18 @@ export async function requestInstitutionEmailVerification(): Promise<{
   const emailMasked = current.verification.emailMasked ?? current.administrator.workEmail;
 
   if (!signupSessionId) {
-    const started = await startOrganizationStaffSignup({
-      fullName: current.administrator.fullName,
-      workEmail: current.administrator.workEmail,
-      password: current.administrator.password,
-    });
-    persistDraft({
-      ...current,
-      verification: {
-        ...current.verification,
-        method: "email",
-        emailStatus: started.emailVerified ? "verified" : "code_sent",
-        signupSessionId: started.signupSessionId,
-        emailMasked: started.emailMasked || emailMasked,
-        resendAfterSeconds: started.resendAfterSeconds,
-        expiresInSeconds: started.expiresInSeconds,
-      },
-    });
-
-    return {
-      ok: true,
-      sentTo: started.emailMasked || emailMasked,
-    };
+    return startInstitutionVerificationSession(current, emailMasked);
   }
 
-  const sent = await sendOrganizationStaffSignupEmail(signupSessionId);
+  let sent;
+  try {
+    sent = await sendOrganizationStaffSignupEmail(signupSessionId);
+  } catch (error) {
+    if (!shouldTreatAsStaleVerificationSession(error)) {
+      throw error;
+    }
+    return restartInstitutionVerificationSession(current);
+  }
 
   persistDraft({
     ...current,
@@ -435,12 +531,37 @@ export async function requestInstitutionEmailVerification(): Promise<{
       emailMasked: sent.emailMasked || emailMasked,
       resendAfterSeconds: sent.resendAfterSeconds,
       expiresInSeconds: sent.expiresInSeconds,
+      sessionIssuedAt: new Date().toISOString(),
     },
   });
 
   return {
     ok: true,
     sentTo: sent.emailMasked || emailMasked,
+  };
+}
+
+export async function recoverInstitutionEmailVerificationSession(): Promise<{
+  recovered: boolean;
+  message?: string;
+}> {
+  const current = getInstitutionSignupDraft();
+  if (
+    !current ||
+    current.verification.method !== "email" ||
+    current.verification.emailStatus !== "code_sent"
+  ) {
+    return { recovered: false };
+  }
+
+  if (!isVerificationSessionLocallyExpired(current)) {
+    return { recovered: false };
+  }
+
+  await restartInstitutionVerificationSession(current);
+  return {
+    recovered: true,
+    message: "Your verification session expired. We sent a new code.",
   };
 }
 

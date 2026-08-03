@@ -1602,8 +1602,16 @@ export async function changeInstitutionPassword(input: {
 export async function startOrganizationStaffSignup(input: {
   fullName: string;
   workEmail: string;
-  password: string;
+  password?: string;
 }) {
+  const stored = getStoredInstitutionAuthTokens();
+  const accessToken =
+    stored == null
+      ? undefined
+      : new Date(stored.expiresAt).getTime() <= Date.now()
+        ? (await refreshInstitutionUserSession(stored.refreshToken)).accessToken
+        : stored.accessToken;
+
   const payload = await apiRequest<{
     signup_session_id: string;
     email_masked: string;
@@ -1611,14 +1619,18 @@ export async function startOrganizationStaffSignup(input: {
     email_resend_after_seconds: number;
     expires_in_seconds: number;
     message: string;
-  }>("/api/v1/auth/organization/signup/start", {
-    method: "POST",
-    body: JSON.stringify({
-      full_name: input.fullName,
-      work_email: input.workEmail,
-      password: input.password,
-    }),
-  });
+  }>(
+    "/api/v1/auth/organization/signup/start",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        full_name: input.fullName,
+        work_email: input.workEmail,
+        ...(input.password?.trim() ? { password: input.password } : {}),
+      }),
+    },
+    accessToken,
+  );
 
   return {
     signupSessionId: payload.signup_session_id,
