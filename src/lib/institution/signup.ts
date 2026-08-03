@@ -287,6 +287,39 @@ function canRestartInstitutionVerification(draft: InstitutionSignupDraft) {
   );
 }
 
+function didAdministratorIdentityChange(
+  current: InstitutionAdministrator,
+  patch: Partial<InstitutionAdministrator>,
+) {
+  const nextWorkEmail = (patch.workEmail ?? current.workEmail).trim().toLowerCase();
+  const currentWorkEmail = current.workEmail.trim().toLowerCase();
+
+  if (nextWorkEmail !== currentWorkEmail) {
+    return true;
+  }
+
+  if (current.password && patch.password !== undefined && patch.password !== current.password) {
+    return true;
+  }
+
+  return false;
+}
+
+function resetEmailVerificationState(
+  verification: InstitutionVerification,
+): InstitutionVerification {
+  return {
+    ...verification,
+    emailStatus: "not_started",
+    signupSessionId: undefined,
+    emailMasked: undefined,
+    resendAfterSeconds: undefined,
+    expiresInSeconds: undefined,
+    sessionIssuedAt: undefined,
+    emailCode: undefined,
+  };
+}
+
 function shouldTreatAsStaleVerificationSession(error: unknown) {
   if (!isInstitutionError(error)) {
     return false;
@@ -475,11 +508,16 @@ export function updateInstitutionAdministrator(
   patch: Partial<InstitutionAdministrator>,
 ): InstitutionSignupDraft {
   const current = getInstitutionSignupDraft() ?? emptyDraft();
+  const identityChanged = didAdministratorIdentityChange(current.administrator, patch);
 
   volatileAdministratorSecrets = {
     password: patch.password ?? current.administrator.password,
     confirmPassword: patch.confirmPassword ?? current.administrator.confirmPassword,
   };
+
+  if (identityChanged) {
+    volatileVerificationDraft = null;
+  }
 
   return persistDraft({
     ...current,
@@ -487,6 +525,10 @@ export function updateInstitutionAdministrator(
       ...current.administrator,
       ...patch,
     },
+    verification:
+      identityChanged && current.verification.method === "email"
+        ? resetEmailVerificationState(current.verification)
+        : current.verification,
   });
 }
 

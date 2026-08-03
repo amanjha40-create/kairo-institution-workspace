@@ -154,6 +154,111 @@ describe("institution signup storage", () => {
     expect(draft?.administrator.password).toBe("super-secret-password");
   });
 
+  it("clears stale email verification state when the administrator work email changes", async () => {
+    const signup = await importSignupModule("false");
+
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionAdministrator({
+      fullName: "Priya Menon",
+      jobTitle: "Registrar",
+      workEmail: "priya.menon@northbridge.edu",
+      authorized: true,
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+    signup.updateInstitutionVerification({
+      method: "email",
+      emailStatus: "code_sent",
+      signupSessionId: "stale_signup_session",
+      emailMasked: "p***@northbridge.edu",
+      resendAfterSeconds: 60,
+      expiresInSeconds: 600,
+      sessionIssuedAt: "2026-08-03T12:00:00.000Z",
+    });
+
+    signup.updateInstitutionAdministrator({
+      workEmail: "registrar@northbridge.edu",
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+
+    const draft = signup.getInstitutionSignupDraft();
+
+    expect(draft?.administrator.workEmail).toBe("registrar@northbridge.edu");
+    expect(draft?.verification.emailStatus).toBe("not_started");
+    expect(draft?.verification.signupSessionId).toBeUndefined();
+    expect(draft?.verification.emailMasked).toBeUndefined();
+    expect(draft?.verification.resendAfterSeconds).toBeUndefined();
+    expect(draft?.verification.expiresInSeconds).toBeUndefined();
+    expect(draft?.verification.sessionIssuedAt).toBeUndefined();
+  });
+
+  it("starts a fresh verification session after the administrator work email changes", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const startOrganizationStaffSignup = vi.fn().mockResolvedValue({
+      signupSessionId: "signup_session_003",
+      emailMasked: "r***@northbridge.edu",
+      emailVerified: false,
+      resendAfterSeconds: 60,
+      expiresInSeconds: 600,
+      message: "Verification code sent.",
+    });
+    const sendOrganizationStaffSignupEmail = vi.fn();
+
+    vi.doMock("@/lib/institution/backend", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/institution/backend")>(
+        "@/lib/institution/backend",
+      );
+
+      return {
+        ...actual,
+        startOrganizationStaffSignup,
+        sendOrganizationStaffSignupEmail,
+      };
+    });
+
+    const signup = await import("@/lib/institution/signup");
+
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionAdministrator({
+      fullName: "Priya Menon",
+      jobTitle: "Registrar",
+      workEmail: "priya.menon@northbridge.edu",
+      authorized: true,
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+    signup.updateInstitutionVerification({
+      method: "email",
+      emailStatus: "code_sent",
+      signupSessionId: "stale_signup_session",
+      emailMasked: "p***@northbridge.edu",
+    });
+
+    signup.updateInstitutionAdministrator({
+      workEmail: "registrar@northbridge.edu",
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+
+    await signup.requestInstitutionEmailVerification();
+
+    expect(sendOrganizationStaffSignupEmail).not.toHaveBeenCalled();
+    expect(startOrganizationStaffSignup).toHaveBeenCalledTimes(1);
+    expect(startOrganizationStaffSignup).toHaveBeenCalledWith({
+      fullName: "Priya Menon",
+      workEmail: "registrar@northbridge.edu",
+      password: "super-secret-password",
+    });
+    expect(signup.getInstitutionSignupDraft()?.verification.signupSessionId).toBe(
+      "signup_session_003",
+    );
+  });
+
   it("derives the correct onboarding continuation step from safe draft fields", async () => {
     const signup = await importSignupModule("false");
 
