@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { getInstitutionOrganizationVerificationRequests } from "@/lib/institution/api";
@@ -7,7 +7,6 @@ import { useInstitutionAuth } from "@/lib/institution/auth";
 import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
-import { getVerificationStatusCategory } from "@/lib/institution/verification";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -45,6 +44,30 @@ const SUMMARY = [
   { key: "awaiting_clarification", label: "Awaiting Clarification" },
   { key: "completed", label: "Completed" },
 ] as const;
+
+const SUMMARY_STATUSES = {
+  pending: [
+    "pending",
+    "draft",
+    "pending_subject_acceptance",
+    "accepted",
+    "pending_subject_submission",
+    "pending_admin_review",
+    "pending_admin_re_review",
+    "pending_organization_acceptance",
+  ],
+  in_progress: [
+    "in_progress",
+    "approved_for_organization_verification",
+    "pending_organization_resolution",
+  ],
+  awaiting_clarification: [
+    "awaiting_information",
+    "awaiting_clarification",
+    "awaiting_subject_corrections",
+  ],
+  completed: ["verified", "confirmed", "rejected", "discrepancy", "cancelled", "expired", "closed"],
+} satisfies Record<(typeof SUMMARY)[number]["key"], VerificationStatus[]>;
 
 function isBackendStatusFilter(
   value: (typeof SUMMARY)[number]["key"],
@@ -94,14 +117,44 @@ function VerificationsPage() {
     enabled: Boolean(organizationId),
   });
 
+  const summaryCountDefinitions = useMemo(
+    () =>
+      SUMMARY.flatMap((item) =>
+        SUMMARY_STATUSES[item.key].map((status) => ({
+          category: item.key,
+          status,
+        })),
+      ),
+    [],
+  );
+
+  const summaryCountQueries = useQueries({
+    queries: summaryCountDefinitions.map(({ category, status }) => ({
+      queryKey: institutionQueryKeys.verificationSummaryCount(organizationId, category, status),
+      queryFn: async () => {
+        if (!organizationId) {
+          throw new Error("An active institution context is required.");
+        }
+
+        const response = await getInstitutionOrganizationVerificationRequests(organizationId, {
+          status,
+          page: 1,
+          pageSize: 1,
+        });
+
+        return response.total;
+      },
+      enabled: Boolean(organizationId) && permissions.canViewVerificationRequests,
+    })),
+  });
+
   const summaryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    (data?.items ?? []).forEach((request) => {
-      const category = getVerificationStatusCategory(request.status);
-      counts[category] = (counts[category] ?? 0) + 1;
-    });
-    return counts;
-  }, [data]);
+    return summaryCountDefinitions.reduce<Record<string, number>>((counts, definition, index) => {
+      counts[definition.category] =
+        (counts[definition.category] ?? 0) + (summaryCountQueries[index]?.data ?? 0);
+      return counts;
+    }, {});
+  }, [summaryCountDefinitions, summaryCountQueries]);
 
   if (!permissions.canViewVerificationRequests) {
     return <PermissionDeniedState />;

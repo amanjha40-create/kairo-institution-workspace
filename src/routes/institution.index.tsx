@@ -74,6 +74,13 @@ function PublicInstitutionPage() {
       return getInstitutionDashboard(session.institutionId);
     },
     enabled: authed && Boolean(session?.institutionId),
+    retry: (failureCount, error) => {
+      if (isInstitutionError(error) && error.status < 500) {
+        return false;
+      }
+
+      return failureCount < 2;
+    },
   });
 
   if (authed) {
@@ -153,7 +160,11 @@ function PublicInstitutionPage() {
               </Link>
             </div>
             {dashboard.verificationActivity.length === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">No recent verification activity.</p>
+              <p className="mt-4 text-sm text-muted-foreground">
+                {dashboard.verificationActivityAvailable === false
+                  ? "Recent verification activity is not available from the current backend contract yet."
+                  : "No recent verification activity."}
+              </p>
             ) : (
               <ol className="mt-4 space-y-3">
                 {dashboard.verificationActivity.map((event) => (
@@ -199,7 +210,9 @@ function PublicInstitutionPage() {
           </div>
           {dashboard.recentlyVerifiedCredentials.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">
-              No recently verified credentials yet.
+              {dashboard.recentlyVerifiedCredentialsAvailable === false
+                ? "Recently verified credential history is not available from the current backend contract yet."
+                : "No recently verified credentials yet."}
             </p>
           ) : (
             <ul className="mt-4 divide-y divide-border">

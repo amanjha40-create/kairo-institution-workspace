@@ -262,6 +262,7 @@ interface BackendInstitutionVerificationDetailResponse {
 interface BackendVerificationRequestResponse {
   public_id: string;
   employment_id: string | null;
+  education_id?: string | null;
   origin_type: VerificationRequest["originType"] | null;
   organization_public_id: string | null;
   trust_invitation_public_id: string | null;
@@ -271,6 +272,7 @@ interface BackendVerificationRequestResponse {
   target_organization_email: string | null;
   request_type: VerificationRequest["requestType"];
   status: VerificationStatus;
+  priority?: VerificationPriority;
   due_date: string | null;
   trust_context: Record<string, unknown>;
   created_at: string;
@@ -281,6 +283,7 @@ interface BackendVerificationRequestResponse {
   consented_fields: string[];
   consented_evidence_scope: string[];
   target_organization_metadata: Record<string, unknown>;
+  education_claim?: BackendVerificationRequestEducationClaimResponse | null;
   assigned_reviewer: BackendVerificationReviewerResponse | null;
   review_status: string | null;
   is_assigned_to_current_user: boolean | null;
@@ -290,6 +293,14 @@ interface BackendVerificationRequestResponse {
     document_items: number;
     field_keys: string[];
   };
+}
+
+interface BackendVerificationRequestEducationClaimResponse {
+  institution_name: string | null;
+  degree: string | null;
+  field_of_study: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 interface BackendVerificationEvidenceResponse {
@@ -811,8 +822,45 @@ function unwrapListResponse<T>(payload: T[] | BackendPageResponse<T>) {
   return Array.isArray(payload) ? payload : payload.items;
 }
 
-function mapVerificationRequest(payload: BackendVerificationRequestResponse): VerificationRequest {
-  const claim = buildCandidateClaimFromTrustContext({
+function formatEducationClaimYear(value: string | null | undefined) {
+  if (!value) return "—";
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return String(parsed.getUTCFullYear());
+  }
+
+  return value;
+}
+
+function buildCandidateClaim(args: {
+  payload: BackendVerificationRequestResponse;
+}): VerificationRequest["claim"] {
+  const { payload } = args;
+
+  if (payload.request_type === "education" && payload.education_claim) {
+    const additionalNotes = [
+      payload.candidate_response?.trim(),
+      payload.consented_fields.length > 0
+        ? `Consented fields: ${payload.consented_fields.join(", ")}`
+        : undefined,
+    ].filter(Boolean);
+
+    return {
+      candidateName: payload.subject_name,
+      institutionName:
+        payload.education_claim.institution_name || payload.target_organization_name || "—",
+      degree: payload.education_claim.degree || "—",
+      programme: payload.education_claim.field_of_study || "—",
+      department: "—",
+      admissionYear: formatEducationClaimYear(payload.education_claim.start_date),
+      graduationYear: formatEducationClaimYear(payload.education_claim.end_date),
+      completionStatus: `${getVerificationRequestTypeLabel(payload.request_type)} claim submitted`,
+      additionalNote: additionalNotes.length > 0 ? additionalNotes.join(" · ") : undefined,
+    };
+  }
+
+  return buildCandidateClaimFromTrustContext({
     trustContext: payload.trust_context,
     candidateName: payload.subject_name,
     institutionName: payload.target_organization_name || undefined,
@@ -820,6 +868,10 @@ function mapVerificationRequest(payload: BackendVerificationRequestResponse): Ve
     candidateResponse: payload.candidate_response,
     consentedFields: payload.consented_fields,
   });
+}
+
+function mapVerificationRequest(payload: BackendVerificationRequestResponse): VerificationRequest {
+  const claim = buildCandidateClaim({ payload });
 
   return {
     id: payload.public_id,
@@ -830,7 +882,7 @@ function mapVerificationRequest(payload: BackendVerificationRequestResponse): Ve
     requestedBy: getVerificationOriginLabel(payload.origin_type),
     requestPurpose: `${getVerificationRequestTypeLabel(payload.request_type)} verification request`,
     status: payload.status,
-    priority: "normal",
+    priority: payload.priority || "normal",
     receivedAt: payload.created_at,
     dueAt: payload.due_date || undefined,
     assignedTo: payload.assigned_reviewer?.full_name || payload.assigned_reviewer?.email,
@@ -865,6 +917,152 @@ function mapVerificationRequest(payload: BackendVerificationRequestResponse): Ve
       fieldKeys: payload.evidence_summary.field_keys,
     },
     isAssignedToCurrentUser: payload.is_assigned_to_current_user,
+  };
+}
+
+const DASHBOARD_PENDING_STATUSES: VerificationStatus[] = [
+  "pending",
+  "draft",
+  "pending_subject_acceptance",
+  "accepted",
+  "pending_subject_submission",
+  "pending_admin_review",
+  "pending_admin_re_review",
+  "pending_organization_acceptance",
+];
+
+const DASHBOARD_IN_PROGRESS_STATUSES: VerificationStatus[] = [
+  "in_progress",
+  "approved_for_organization_verification",
+  "pending_organization_resolution",
+];
+
+const DASHBOARD_AWAITING_INFORMATION_STATUSES: VerificationStatus[] = [
+  "awaiting_information",
+  "awaiting_clarification",
+];
+
+const DASHBOARD_VERIFIED_STATUSES: VerificationStatus[] = ["verified", "confirmed"];
+const DASHBOARD_PEOPLE_STATUSES: Person["institutionStatus"][] = [
+  "current_student",
+  "alumni",
+  "withdrawn",
+  "inactive",
+];
+
+async function fetchInstitutionVerificationRequestTotal(
+  orgPublicId: string,
+  accessToken: string,
+  filters: {
+    status?: VerificationStatus;
+    priority?: VerificationPriority;
+  } = {},
+) {
+  const query = buildQueryString({
+    paginate: true,
+    page: 1,
+    page_size: 1,
+    status: filters.status,
+    priority: filters.priority,
+  });
+
+  const payload = await apiRequest<BackendInstitutionVerificationInboxResponse>(
+    `/api/v1/organizations/${orgPublicId}/verification-requests${query}`,
+    { method: "GET" },
+    accessToken,
+  );
+
+  return payload.total;
+}
+
+async function fetchInstitutionPeopleTotal(
+  orgPublicId: string,
+  accessToken: string,
+  lifecycleStatus?: Person["institutionStatus"],
+) {
+  const query = buildQueryString({
+    page: 1,
+    page_size: 1,
+    lifecycle_status: lifecycleStatus,
+  });
+
+  const payload = await apiRequest<BackendPageResponse<BackendInstitutionPersonListItemResponse>>(
+    `/api/v1/organizations/${orgPublicId}/institution/people${query}`,
+    { method: "GET" },
+    accessToken,
+  );
+
+  return payload.total;
+}
+
+async function buildInstitutionDashboardFallback(
+  orgPublicId: string,
+  accessToken: string,
+): Promise<InstitutionDashboard> {
+  const [
+    totalVerifications,
+    pendingCounts,
+    inProgressCounts,
+    awaitingInformationCounts,
+    verifiedCounts,
+    highPriority,
+    urgentPriority,
+    totalPeople,
+    lifecyclePeopleCounts,
+  ] = await Promise.all([
+    fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken),
+    Promise.all(
+      DASHBOARD_PENDING_STATUSES.map((status) =>
+        fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { status }),
+      ),
+    ),
+    Promise.all(
+      DASHBOARD_IN_PROGRESS_STATUSES.map((status) =>
+        fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { status }),
+      ),
+    ),
+    Promise.all(
+      DASHBOARD_AWAITING_INFORMATION_STATUSES.map((status) =>
+        fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { status }),
+      ),
+    ),
+    Promise.all(
+      DASHBOARD_VERIFIED_STATUSES.map((status) =>
+        fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { status }),
+      ),
+    ),
+    fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { priority: "high" }),
+    fetchInstitutionVerificationRequestTotal(orgPublicId, accessToken, { priority: "urgent" }),
+    fetchInstitutionPeopleTotal(orgPublicId, accessToken),
+    Promise.all(
+      DASHBOARD_PEOPLE_STATUSES.map((status) =>
+        fetchInstitutionPeopleTotal(orgPublicId, accessToken, status),
+      ),
+    ),
+  ]);
+
+  return {
+    pendingVerifications:
+      pendingCounts.reduce((sum, count) => sum + count, 0) +
+      inProgressCounts.reduce((sum, count) => sum + count, 0) +
+      awaitingInformationCounts.reduce((sum, count) => sum + count, 0),
+    recentlyVerifiedCredentials: [],
+    recentlyVerifiedCredentialsAvailable: false,
+    verificationActivity: [],
+    verificationActivityAvailable: false,
+    people: {
+      total: totalPeople,
+      currentStudent: lifecyclePeopleCounts[0] ?? 0,
+      alumni: lifecyclePeopleCounts[1] ?? 0,
+      withdrawn: lifecyclePeopleCounts[2] ?? 0,
+      inactive: lifecyclePeopleCounts[3] ?? 0,
+    },
+    statistics: {
+      totalVerifications,
+      verifiedVerifications: verifiedCounts.reduce((sum, count) => sum + count, 0),
+      awaitingInformation: awaitingInformationCounts.reduce((sum, count) => sum + count, 0),
+      highPriority: highPriority + urgentPriority,
+    },
   };
 }
 
@@ -1999,15 +2197,23 @@ export async function getInstitutionOrganizationPersonPassportSummary(
 
 export async function getInstitutionDashboard(orgPublicId: string) {
   return withInstitutionAccessToken(async (accessToken) => {
-    const payload = await apiRequest<BackendInstitutionDashboardResponse>(
-      `/api/v1/organizations/${orgPublicId}/institution/dashboard`,
-      {
-        method: "GET",
-      },
-      accessToken,
-    );
+    try {
+      const payload = await apiRequest<BackendInstitutionDashboardResponse>(
+        `/api/v1/organizations/${orgPublicId}/institution/dashboard`,
+        {
+          method: "GET",
+        },
+        accessToken,
+      );
 
-    return mapInstitutionDashboard(payload);
+      return mapInstitutionDashboard(payload);
+    } catch (error) {
+      if (error instanceof InstitutionError && error.status === 404) {
+        return buildInstitutionDashboardFallback(orgPublicId, accessToken);
+      }
+
+      throw error;
+    }
   });
 }
 

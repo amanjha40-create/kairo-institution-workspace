@@ -198,4 +198,212 @@ describe("institution repositories and public verification flows", () => {
     expect(detail.claim.department).toBe("—");
     expect(detail.institutionRecord.department).toBe("Engineering");
   });
+
+  it("prefers the typed education_claim contract over trust_context parsing", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          public_id: "vr_edu_001",
+          employment_id: null,
+          education_id: "edu_001",
+          origin_type: "subject_initiated",
+          organization_public_id: "inst_001",
+          trust_invitation_public_id: null,
+          subject_name: "Amina Rahman",
+          subject_email: "amina.rahman@example.com",
+          target_organization_name: "Northbridge University",
+          target_organization_email: "records@northbridge.edu",
+          request_type: "education",
+          status: "pending_organization_resolution",
+          priority: "urgent",
+          due_date: "2026-08-12",
+          trust_context: {
+            degree: "Wrong Degree",
+            institution_name: "Wrong University",
+            field_of_study: "Wrong Programme",
+            graduation_year: "2099",
+          },
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-02T10:00:00Z",
+          candidate_response: "Shared transcript.",
+          candidate_response_submitted_at: "2026-08-01T12:00:00Z",
+          accepted_at: "2026-08-01T11:00:00Z",
+          consented_fields: ["degree"],
+          consented_evidence_scope: ["transcript"],
+          target_organization_metadata: {},
+          education_claim: {
+            institution_name: "Northbridge University",
+            degree: "Bachelor of Science",
+            field_of_study: "Computer Science",
+            start_date: "2020-08-15",
+            end_date: "2024-06-15",
+          },
+          evidence_summary: {
+            total_items: 1,
+            document_items: 1,
+            field_keys: ["transcript"],
+          },
+          assigned_reviewer: null,
+          review_status: null,
+          is_assigned_to_current_user: false,
+          organization_internal_note: null,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await import("@/lib/institution/backend");
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    const request = await backend.verifyInstitutionVerificationRequest("vr_edu_001", {
+      note: "Matches institution record.",
+    });
+
+    expect(request.priority).toBe("urgent");
+    expect(request.claim.institutionName).toBe("Northbridge University");
+    expect(request.claim.degree).toBe("Bachelor of Science");
+    expect(request.claim.programme).toBe("Computer Science");
+    expect(request.claim.admissionYear).toBe("2020");
+    expect(request.claim.graduationYear).toBe("2024");
+  });
+
+  it("falls back to authoritative verification and people totals when the dedicated dashboard endpoint is unavailable", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const verificationTotals: Record<string, number> = {
+      all: 9,
+      pending: 1,
+      draft: 0,
+      pending_subject_acceptance: 0,
+      accepted: 1,
+      pending_subject_submission: 0,
+      pending_admin_review: 0,
+      pending_admin_re_review: 0,
+      pending_organization_acceptance: 0,
+      in_progress: 1,
+      approved_for_organization_verification: 0,
+      pending_organization_resolution: 1,
+      awaiting_information: 1,
+      awaiting_clarification: 1,
+      verified: 2,
+      confirmed: 1,
+      high: 1,
+      urgent: 1,
+    };
+    const peopleTotals: Record<string, number> = {
+      all: 12,
+      current_student: 5,
+      alumni: 4,
+      withdrawn: 2,
+      inactive: 1,
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+
+      if (url.pathname.endsWith("/institution/dashboard")) {
+        return new Response(
+          JSON.stringify({ error: { code: "not_found", message: "Not Found" } }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname.endsWith("/verification-requests")) {
+        const status = url.searchParams.get("status");
+        const priority = url.searchParams.get("priority");
+        const total = priority
+          ? (verificationTotals[priority] ?? 0)
+          : status
+            ? (verificationTotals[status] ?? 0)
+            : verificationTotals.all;
+
+        return new Response(
+          JSON.stringify({
+            items: [],
+            total,
+            page: 1,
+            page_size: 1,
+            total_pages: total === 0 ? 0 : 1,
+            offset: 0,
+            limit: 1,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname.endsWith("/institution/people")) {
+        const lifecycleStatus = url.searchParams.get("lifecycle_status");
+        const total = lifecycleStatus ? (peopleTotals[lifecycleStatus] ?? 0) : peopleTotals.all;
+
+        return new Response(
+          JSON.stringify({
+            items: [],
+            total,
+            page: 1,
+            page_size: 1,
+            total_pages: total === 0 ? 0 : 1,
+            offset: 0,
+            limit: 1,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("Not Found", { status: 404 });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await import("@/lib/institution/backend");
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    const dashboard = await backend.getInstitutionDashboard("inst_001");
+
+    expect(dashboard.pendingVerifications).toBe(6);
+    expect(dashboard.statistics.totalVerifications).toBe(9);
+    expect(dashboard.statistics.verifiedVerifications).toBe(3);
+    expect(dashboard.statistics.awaitingInformation).toBe(2);
+    expect(dashboard.statistics.highPriority).toBe(2);
+    expect(dashboard.people).toEqual({
+      total: 12,
+      currentStudent: 5,
+      alumni: 4,
+      withdrawn: 2,
+      inactive: 1,
+    });
+    expect(dashboard.verificationActivityAvailable).toBe(false);
+    expect(dashboard.recentlyVerifiedCredentialsAvailable).toBe(false);
+  });
 });

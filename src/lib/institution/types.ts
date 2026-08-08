@@ -448,7 +448,9 @@ export interface InstitutionDashboardStatistics {
 export interface InstitutionDashboard {
   pendingVerifications: number;
   recentlyVerifiedCredentials: InstitutionDashboardCredential[];
+  recentlyVerifiedCredentialsAvailable?: boolean;
   verificationActivity: InstitutionDashboardActivity[];
+  verificationActivityAvailable?: boolean;
   people: InstitutionPeopleSummary;
   statistics: InstitutionDashboardStatistics;
 }

@@ -8,6 +8,18 @@ export const institutionQueryKeys = {
     organizationId?: string,
     filters?: Record<string, string | number | boolean | undefined>,
   ) => ["institution", "verification-inbox", organizationId ?? "none", filters ?? {}] as const,
+  verificationSummaryCount: (
+    organizationId: string | undefined,
+    category: string,
+    status: string,
+  ) =>
+    [
+      "institution",
+      "verification-summary-count",
+      organizationId ?? "none",
+      category,
+      status,
+    ] as const,
   verification: (requestId: string) => ["institution", "verification", requestId] as const,
   verificationEvidence: (requestId: string) =>
     ["institution", "verification", requestId, "evidence"] as const,
