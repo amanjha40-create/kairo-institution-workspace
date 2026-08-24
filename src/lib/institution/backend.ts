@@ -828,6 +828,62 @@ function unwrapListResponse<T>(payload: T[] | BackendPageResponse<T>) {
   return Array.isArray(payload) ? payload : payload.items;
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeEvidencePayload(payload: unknown): BackendVerificationEvidenceResponse[] {
+  if (Array.isArray(payload)) {
+    return payload as BackendVerificationEvidenceResponse[];
+  }
+
+  if (!isObjectRecord(payload)) {
+    return [];
+  }
+
+  const pageItems = payload.items;
+  if (Array.isArray(pageItems)) {
+    return pageItems as BackendVerificationEvidenceResponse[];
+  }
+
+  const evidenceItems = payload.evidence;
+  if (Array.isArray(evidenceItems)) {
+    return evidenceItems as BackendVerificationEvidenceResponse[];
+  }
+
+  if ("public_id" in payload) {
+    return [payload as unknown as BackendVerificationEvidenceResponse];
+  }
+
+  return [];
+}
+
+function normalizeTimelinePayload(payload: unknown): BackendVerificationTimelineEventResponse[] {
+  if (Array.isArray(payload)) {
+    return payload as BackendVerificationTimelineEventResponse[];
+  }
+
+  if (!isObjectRecord(payload)) {
+    return [];
+  }
+
+  const pageItems = payload.items;
+  if (Array.isArray(pageItems)) {
+    return pageItems as BackendVerificationTimelineEventResponse[];
+  }
+
+  const nestedTimeline = payload.timeline;
+  if (isObjectRecord(nestedTimeline) && Array.isArray(nestedTimeline.items)) {
+    return nestedTimeline.items as BackendVerificationTimelineEventResponse[];
+  }
+
+  if (Array.isArray(nestedTimeline)) {
+    return nestedTimeline as BackendVerificationTimelineEventResponse[];
+  }
+
+  return [];
+}
+
 function formatEducationClaimYear(value: string | null | undefined) {
   if (!value) return "—";
 
@@ -1205,13 +1261,14 @@ function mapVerificationEvidence(payload: BackendVerificationEvidenceResponse) {
 function mapVerificationTimelineEvent(
   payload: BackendVerificationTimelineEventResponse,
 ): TimelineEvent {
+  const metadata = isObjectRecord(payload.metadata) ? payload.metadata : {};
   const metadataDetail =
-    typeof payload.metadata.note === "string"
-      ? payload.metadata.note
-      : typeof payload.metadata.assignee_email === "string"
-        ? payload.metadata.assignee_email
-        : Array.isArray(payload.metadata.fields)
-          ? payload.metadata.fields.join(", ")
+    typeof metadata.note === "string"
+      ? metadata.note
+      : typeof metadata.assignee_email === "string"
+        ? metadata.assignee_email
+        : Array.isArray(metadata.fields)
+          ? metadata.fields.join(", ")
           : undefined;
 
   return {
@@ -2365,10 +2422,7 @@ export async function updateInstitutionVerificationPriority(
 
 export async function getInstitutionVerificationEvidence(requestPublicId: string) {
   return withInstitutionAccessToken(async (accessToken) => {
-    const payload = await apiRequest<
-      | BackendVerificationEvidenceResponse[]
-      | BackendPageResponse<BackendVerificationEvidenceResponse>
-    >(
+    const payload = await apiRequest<unknown>(
       `/api/v1/verification-requests/${requestPublicId}/evidence`,
       {
         method: "GET",
@@ -2376,13 +2430,13 @@ export async function getInstitutionVerificationEvidence(requestPublicId: string
       accessToken,
     );
 
-    return unwrapListResponse(payload).map(mapVerificationEvidence);
+    return normalizeEvidencePayload(payload).map(mapVerificationEvidence);
   });
 }
 
 export async function getInstitutionVerificationTimeline(requestPublicId: string) {
   return withInstitutionAccessToken(async (accessToken) => {
-    const payload = await apiRequest<BackendVerificationTimelineResponse>(
+    const payload = await apiRequest<unknown>(
       `/api/v1/verification-requests/${requestPublicId}/timeline`,
       {
         method: "GET",
@@ -2390,7 +2444,7 @@ export async function getInstitutionVerificationTimeline(requestPublicId: string
       accessToken,
     );
 
-    return payload.items.map(mapVerificationTimelineEvent);
+    return normalizeTimelinePayload(payload).map(mapVerificationTimelineEvent);
   });
 }
 

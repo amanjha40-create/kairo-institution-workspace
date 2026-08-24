@@ -282,6 +282,104 @@ describe("institution repositories and public verification flows", () => {
     expect(request.claim.graduationYear).toBe("2024");
   });
 
+  it("normalizes sparse evidence and nested timeline payloads from the shared verification contract", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+
+      if (url.pathname.endsWith("/verification-requests/vr_001/evidence")) {
+        return new Response(
+          JSON.stringify({
+            public_id: "evidence_001",
+            evidence_type: "degree_certificate",
+            field_key: "education_evidence",
+            document_id: null,
+            employment_document_id: null,
+            value: null,
+            status: "submitted",
+            created_at: "2026-08-24T10:00:00Z",
+            updated_at: "2026-08-24T10:00:00Z",
+            document_type: "degree_certificate",
+            original_filename: "Degree Certificate.pdf",
+            mime_type: "application/pdf",
+            file_size: 2048,
+            upload_status: "uploaded",
+            download_url: "https://example.com/degree-certificate.pdf",
+            download_url_expires_in_seconds: 300,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname.endsWith("/verification-requests/vr_001/timeline")) {
+        return new Response(
+          JSON.stringify({
+            timeline: {
+              verification_request_public_id: "vr_001",
+              items: [
+                {
+                  public_id: "timeline_001",
+                  event_type: "admin_finalized",
+                  event_source: "admin",
+                  previous_status: "pending_admin_quality_review",
+                  new_status: "verified",
+                  metadata: null,
+                  created_at: "2026-08-24T12:19:45.821278Z",
+                },
+              ],
+              total: 1,
+              page: 1,
+              page_size: 100,
+              total_pages: 1,
+              offset: 0,
+              limit: 100,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("Not Found", { status: 404 });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await import("@/lib/institution/backend");
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    const evidence = await backend.getInstitutionVerificationEvidence("vr_001");
+    const timeline = await backend.getInstitutionVerificationTimeline("vr_001");
+
+    expect(evidence).toEqual([
+      expect.objectContaining({
+        id: "evidence_001",
+        name: "Degree Certificate.pdf",
+        type: "degree_certificate",
+      }),
+    ]);
+    expect(timeline).toEqual([
+      expect.objectContaining({
+        id: "timeline_001",
+        label: "Admin Finalized",
+      }),
+    ]);
+  });
+
   it("falls back to authoritative verification and people totals when the dedicated dashboard endpoint is unavailable", async () => {
     vi.resetModules();
     vi.stubEnv("VITE_APP_ENV", "test");
