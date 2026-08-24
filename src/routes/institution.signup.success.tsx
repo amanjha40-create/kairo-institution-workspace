@@ -34,7 +34,7 @@ function SuccessPage() {
     setApp(getInstitutionWorkspaceApplication());
   }, []);
 
-  if (!app) {
+  if (!app && !session) {
     return (
       <SignupShell step="review" title="No signup request found">
         <EmptyState
@@ -50,7 +50,10 @@ function SuccessPage() {
     );
   }
 
-  const institutionName = app?.institution.name || "your institution";
+  const institutionName = app?.institution.name || session?.institutionName || "your institution";
+  const administratorName = app?.administrator.fullName || session?.name || "—";
+  const administratorEmail = app?.administrator.workEmail || session?.email || "—";
+  const status = app ? statusLabel(app.status) : "Verification Pending";
 
   return (
     <SignupShell step="review" title="Institution workspace request submitted">
@@ -70,9 +73,9 @@ function SuccessPage() {
           </div>
           <div className="divide-y divide-border/70">
             <Row label="Institution" value={institutionName} />
-            <Row label="Status" value={app ? statusLabel(app.status) : "Verification Pending"} />
-            <Row label="Administrator" value={app?.administrator.fullName || "—"} />
-            <Row label="Email" value={app?.administrator.workEmail || "—"} />
+            <Row label="Status" value={status} />
+            <Row label="Administrator" value={administratorName} />
+            <Row label="Email" value={administratorEmail} />
           </div>
         </div>
 

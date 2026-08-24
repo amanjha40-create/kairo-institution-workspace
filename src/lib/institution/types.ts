@@ -13,6 +13,7 @@ export type VerificationStatus =
   | "accepted"
   | "pending_subject_submission"
   | "pending_admin_review"
+  | "pending_admin_quality_review"
   | "awaiting_subject_corrections"
   | "pending_admin_re_review"
   | "approved_for_organization_verification"

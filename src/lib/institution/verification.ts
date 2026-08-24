@@ -51,6 +51,7 @@ export function getVerificationNextAction(status: VerificationStatus) {
     case "in_progress":
       return "Complete institution review";
     case "pending_admin_review":
+    case "pending_admin_quality_review":
     case "pending_admin_re_review":
       return "Await Kairo review";
     case "awaiting_subject_corrections":

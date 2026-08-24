@@ -231,6 +231,22 @@ describe("institution routing and permissions", () => {
     expect(await screen.findByText("You don't have access to this page")).toBeInTheDocument();
   });
 
+  it("shows signup success from authenticated workspace truth even without a stored application draft", async () => {
+    window.localStorage.removeItem("kairo.institution.signup.application");
+
+    await renderRoute("/institution/signup/success", {
+      session: ownerSession(),
+      authenticated: true,
+      demoMode: "false",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Institution workspace request submitted" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Northbridge University")).toBeInTheDocument();
+    expect(screen.queryByText("No signup request found")).not.toBeInTheDocument();
+  });
+
   it("keeps candidate claims and institution records distinctly labeled", async () => {
     await renderRoute("/institution/verifications/req_001", {
       session: ownerSession(),
