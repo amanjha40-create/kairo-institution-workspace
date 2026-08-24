@@ -9,6 +9,14 @@ async function importApiModule(demoMode: "true" | "false") {
   return import("@/lib/institution/api");
 }
 
+async function importBackendModule() {
+  vi.resetModules();
+  vi.stubEnv("VITE_APP_ENV", "test");
+  vi.stubEnv("VITE_DEMO_MODE", "false");
+  vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+  return import("@/lib/institution/backend");
+}
+
 describe("institution repositories and public verification flows", () => {
   it("distinguishes not shared from not available", async () => {
     const { ProfessionalInfoValue } =
@@ -503,5 +511,223 @@ describe("institution repositories and public verification flows", () => {
     });
     expect(dashboard.verificationActivityAvailable).toBe(false);
     expect(dashboard.recentlyVerifiedCredentialsAvailable).toBe(false);
+  });
+
+  it("uses canonical account settings and session routes without calling obsolete users/me settings paths", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+
+      if (url.pathname === "/api/v1/account/settings" && init?.method === "GET") {
+        return new Response(
+          JSON.stringify({
+            profile: {
+              id: "user_001",
+              email: "priya.menon@northbridge.edu",
+              full_name: "Priya Menon",
+              phone: "+1 555 010 4421",
+              current_role: "Registrar",
+              location: "Northbridge, NB",
+              email_verified_at: "2026-07-10T10:00:00Z",
+              phone_verified_at: null,
+            },
+            notification_preferences: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname === "/api/v1/account/settings" && init?.method === "PATCH") {
+        return new Response(
+          JSON.stringify({
+            profile: {
+              id: "user_001",
+              email: "priya.menon@northbridge.edu",
+              full_name: "Priya Menon",
+              phone: "+1 555 010 4421",
+              current_role: "Registrar",
+              location: "Northbridge, NB",
+              email_verified_at: "2026-07-10T10:00:00Z",
+              phone_verified_at: null,
+            },
+            notification_preferences: [
+              {
+                public_id: "pref_001",
+                event_type: "verification_completed",
+                enabled: true,
+                preferred_channels: ["email"],
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname === "/api/v1/account/sessions" && init?.method === "GET") {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "session_001",
+              created_at: "2026-08-24T10:09:53.398450Z",
+              expires_at: "2026-08-31T10:09:53.398450Z",
+              last_active_at: "2026-08-24T10:19:53.398450Z",
+              current: true,
+              device: "MacBook Pro",
+              browser: "Chrome",
+              location: "Northbridge, NB",
+            },
+          ]),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname === "/api/v1/account/sessions/session_001" && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+
+      if (url.pathname === "/api/v1/account/sessions" && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response("Not Found", { status: 404 });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await importBackendModule();
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    await backend.getInstitutionAccountSettings();
+    await backend.updateInstitutionAccountNotificationPreferences([
+      {
+        event_type: "verification_completed",
+        enabled: true,
+        preferred_channels: ["email"],
+      },
+    ]);
+    await backend.getInstitutionAccountSessions();
+    await backend.revokeInstitutionAccountSession("session_001");
+    await backend.revokeAllInstitutionAccountSessions();
+
+    const pathnames = fetchMock.mock.calls.map(
+      ([input]) => new URL(typeof input === "string" ? input : input.toString()).pathname,
+    );
+
+    expect(pathnames).toContain("/api/v1/account/settings");
+    expect(pathnames).toContain("/api/v1/account/sessions");
+    expect(pathnames).toContain("/api/v1/account/sessions/session_001");
+    expect(pathnames).not.toContain("/api/v1/users/me/account-settings");
+    expect(pathnames).not.toContain("/api/v1/users/me/sessions");
+  });
+
+  it("keeps account settings not-found responses truthful", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+
+      if (url.pathname === "/api/v1/account/settings") {
+        return new Response(
+          JSON.stringify({
+            error: { code: "not_found", message: "Not Found" },
+          }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("Not Found", { status: 404 });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await importBackendModule();
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    await expect(backend.getInstitutionAccountSettings()).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+  });
+
+  it("keeps account session unauthorized responses truthful", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const url = new URL(requestUrl);
+
+      if (url.pathname === "/api/v1/account/sessions") {
+        return new Response(
+          JSON.stringify({
+            error: { code: "unauthorized", message: "Session expired" },
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.pathname === "/api/v1/auth/refresh") {
+        return new Response(
+          JSON.stringify({
+            error: { code: "unauthorized", message: "Refresh token expired" },
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("Not Found", { status: 404 });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await importBackendModule();
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    await expect(backend.getInstitutionAccountSessions()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
+  });
+
+  it("keeps obsolete users/me account settings routes out of the backend adapter source", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const backendSource = await readFile(
+      join(process.cwd(), "src/lib/institution/backend.ts"),
+      "utf8",
+    );
+
+    expect(backendSource).toContain('"/api/v1/account/settings"');
+    expect(backendSource).toContain('"/api/v1/account/sessions"');
+    expect(backendSource).not.toContain("/api/v1/users/me/account-settings");
+    expect(backendSource).not.toContain("/api/v1/users/me/sessions");
   });
 });

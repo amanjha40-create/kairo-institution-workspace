@@ -73,6 +73,16 @@ async function renderSettingsRoute() {
       ],
       sessions: [
         {
+          id: "session_current",
+          createdAt: "2026-07-24T08:00:00Z",
+          expiresAt: "2026-08-24T08:00:00Z",
+          lastActiveAt: "2026-07-26T10:00:00Z",
+          current: true,
+          device: "Current Device",
+          browser: "Safari",
+          location: "Northbridge, NB",
+        },
+        {
           id: "session_001",
           createdAt: "2026-07-20T08:00:00Z",
           expiresAt: "2026-08-20T08:00:00Z",
@@ -144,6 +154,7 @@ describe("institution settings route", () => {
     expect(screen.getByDisplayValue("Priya Menon")).toBeInTheDocument();
     expect(screen.getByText("Verification preferences")).toBeInTheDocument();
     expect(screen.getByText(/are not exposed by the shared backend/i)).toBeInTheDocument();
+    expect(screen.getByText("Current session")).toBeInTheDocument();
     expect(screen.getByText(/MacBook Pro · Chrome · Lagos, NG/i)).toBeInTheDocument();
     expect(screen.getByText("Student Information System")).toBeInTheDocument();
     expect(screen.getByText("Multi-factor authentication")).toBeInTheDocument();
