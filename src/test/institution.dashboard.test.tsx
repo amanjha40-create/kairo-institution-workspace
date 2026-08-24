@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
-import { RouterProvider } from "@tanstack/react-router";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import { renderInstitutionRoute } from "@/test/router-test-utils";
 
 function ownerSession() {
   return {
@@ -78,12 +78,7 @@ describe("institution dashboard route", () => {
       }),
     }));
 
-    window.history.replaceState({}, "", "/institution");
-
-    const { getRouter } = await import("@/router");
-    const router = getRouter();
-
-    render(<RouterProvider router={router} />);
+    await renderInstitutionRoute("/institution");
 
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByText("Pending verifications")).toBeInTheDocument();

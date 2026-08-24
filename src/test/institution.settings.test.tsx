@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
+import { renderInstitutionRoute } from "@/test/router-test-utils";
 
 function ownerSession() {
   return {
@@ -125,13 +125,7 @@ async function renderSettingsRoute() {
     }),
   }));
 
-  window.history.replaceState({}, "", "/institution/settings");
-
-  const { getRouter } = await import("@/router");
-  const router = getRouter();
-
-  render(<RouterProvider router={router} />);
-  await waitFor(() => expect(router.state.status).not.toBe("pending"));
+  await renderInstitutionRoute("/institution/settings");
 
   return {
     settingsApi,

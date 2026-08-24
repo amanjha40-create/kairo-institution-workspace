@@ -2,6 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+const testCleanups = new Set<() => void | Promise<void>>();
+
+export function registerTestCleanup(cleanupFn: () => void | Promise<void>) {
+  testCleanups.add(cleanupFn);
+}
+
 function createStorage() {
   const store = new Map<string, string>();
 
@@ -37,7 +43,11 @@ if (!("sessionStorage" in window) || !window.sessionStorage) {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
+  for (const cleanupFn of Array.from(testCleanups).reverse()) {
+    await cleanupFn();
+  }
+  testCleanups.clear();
   cleanup();
   window.localStorage?.clear();
   window.sessionStorage?.clear();
