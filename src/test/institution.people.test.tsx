@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import userEvent from "@testing-library/user-event";
 
 function ownerSession() {
   return {
@@ -37,48 +38,123 @@ async function renderRoute(path: string) {
     }),
     markInstitutionNotificationRead: vi.fn(),
     markAllInstitutionNotificationsRead: vi.fn(),
-    getInstitutionPeople: vi.fn().mockResolvedValue({
-      items: [
-        {
-          id: "person_001",
-          name: "Amina Rahman",
-          institutionStatus: "alumni",
-          trustStatus: "verified",
-          passportStatus: "connected",
-          degree: "Bachelor of Science",
-          graduationYear: "2024",
-          studentIdMasked: "*******0142",
-          relationship: {
-            institutionName: "—",
-            studentId: "*******0142",
-            status: "alumni",
-            degree: "Bachelor of Science",
-            programme: "Computer Science",
-            department: "Engineering",
-            admissionPeriod: "2020",
-            graduationPeriod: "2024",
-            verificationStatus: "verified",
-          },
-          sharedProfile: {
-            consented: true,
-            currentTitle: "Software Engineer",
-            currentCompany: "Kairo Labs",
-            fields: [
+    getInstitutionPeople: vi.fn().mockImplementation(async (_organizationId, filters = {}) => {
+      const page = filters.page ?? 1;
+      const pageSize = filters.pageSize ?? 25;
+      const search = filters.search ?? "";
+      const people =
+        search === "sam"
+          ? [
               {
-                field: "current_title",
-                value: "Software Engineer",
-                consentedAt: "2026-07-20T10:00:00Z",
+                id: "person_002",
+                name: "Sam Okoro",
+                institutionStatus: "current_student",
+                trustStatus: "pending",
+                degree: "Master of Science",
+                graduationYear: "2026",
+                studentIdMasked: "*******0991",
+                relationship: {
+                  institutionName: "—",
+                  studentId: "*******0991",
+                  status: "current_student",
+                  degree: "Master of Science",
+                  programme: "Data Science",
+                  department: "Engineering",
+                  admissionPeriod: "2024",
+                  graduationPeriod: "2026",
+                  verificationStatus: "pending",
+                },
+                sharedProfile: {
+                  consented: false,
+                },
+                credentials: [],
+                verificationActivity: [],
+                timeline: [],
+                lastUpdated: "2026-07-24T10:00:00Z",
               },
-            ],
-            consentedFields: ["current_title", "current_employer"],
-          },
-          credentials: [],
-          verificationActivity: [],
-          timeline: [],
-          lastUpdated: "2026-07-24T10:00:00Z",
-        },
-      ],
-      total: 1,
+            ]
+          : page === 2
+            ? [
+                {
+                  id: "person_003",
+                  name: "Jordan Lee",
+                  institutionStatus: "alumni",
+                  trustStatus: "verified",
+                  degree: "Bachelor of Arts",
+                  graduationYear: "2023",
+                  studentIdMasked: "*******0203",
+                  relationship: {
+                    institutionName: "—",
+                    studentId: "*******0203",
+                    status: "alumni",
+                    degree: "Bachelor of Arts",
+                    programme: "Economics",
+                    department: "Business",
+                    admissionPeriod: "2019",
+                    graduationPeriod: "2023",
+                    verificationStatus: "verified",
+                  },
+                  sharedProfile: {
+                    consented: false,
+                  },
+                  credentials: [],
+                  verificationActivity: [],
+                  timeline: [],
+                  lastUpdated: "2026-07-24T10:00:00Z",
+                },
+              ]
+            : [
+                {
+                  id: "person_001",
+                  name: "Amina Rahman",
+                  institutionStatus: "alumni",
+                  trustStatus: "verified",
+                  passportStatus: "connected",
+                  degree: "Bachelor of Science",
+                  graduationYear: "2024",
+                  studentIdMasked: "*******0142",
+                  relationship: {
+                    institutionName: "—",
+                    studentId: "*******0142",
+                    status: "alumni",
+                    degree: "Bachelor of Science",
+                    programme: "Computer Science",
+                    department: "Engineering",
+                    admissionPeriod: "2020",
+                    graduationPeriod: "2024",
+                    verificationStatus: "verified",
+                  },
+                  sharedProfile: {
+                    consented: true,
+                    currentTitle: "Software Engineer",
+                    currentCompany: "Kairo Labs",
+                    fields: [
+                      {
+                        field: "current_title",
+                        value: "Software Engineer",
+                        consentedAt: "2026-07-20T10:00:00Z",
+                      },
+                    ],
+                    consentedFields: ["current_title", "current_employer"],
+                  },
+                  credentials: [],
+                  verificationActivity: [],
+                  timeline: [],
+                  lastUpdated: "2026-07-24T10:00:00Z",
+                },
+              ];
+
+      const total = search === "sam" ? 1 : 26;
+
+      return {
+        items: people,
+        total,
+        page,
+        pageSize,
+        totalPages: search === "sam" ? 1 : 2,
+        offset: (page - 1) * pageSize,
+        limit: pageSize,
+      };
     }),
     getInstitutionPerson: vi.fn().mockResolvedValue({
       id: "person_001",
@@ -222,11 +298,42 @@ describe("institution people routes", () => {
     expect(screen.getAllByText("Amina Rahman").length).toBeGreaterThan(0);
     expect(screen.getAllByText("*******0142").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Software Engineer").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /Programme, department, and graduation filter options are hidden until the backend returns authoritative filter metadata/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("All programmes")).not.toBeInTheDocument();
     expect(peopleApi.getInstitutionPeople).toHaveBeenCalledWith(
       "inst_northbridge",
-      expect.objectContaining({ pageSize: 100 }),
+      expect.objectContaining({ page: 1, pageSize: 25 }),
     );
   }, 10_000);
+
+  it("supports server-backed pagination and resets to page one after search changes", async () => {
+    const peopleApi = await renderRoute("/institution/people");
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Next" }));
+
+    await waitFor(() =>
+      expect(peopleApi.getInstitutionPeople).toHaveBeenLastCalledWith(
+        "inst_northbridge",
+        expect.objectContaining({ page: 2, pageSize: 25 }),
+      ),
+    );
+
+    await user.type(screen.getByPlaceholderText(/Search name, student ID/i), "sam");
+
+    await waitFor(() =>
+      expect(peopleApi.getInstitutionPeople).toHaveBeenLastCalledWith(
+        "inst_northbridge",
+        expect.objectContaining({ page: 1, pageSize: 25, search: "sam" }),
+      ),
+    );
+
+    expect(await screen.findByText("Sam Okoro")).toBeInTheDocument();
+  });
 
   it("renders person detail with full student ID, verification history, and credential history", async () => {
     const peopleApi = await renderRoute("/institution/people/person_001");

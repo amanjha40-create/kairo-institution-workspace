@@ -294,6 +294,11 @@ export interface Person {
 export interface InstitutionPeopleDirectory {
   items: Person[];
   total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
 }
 
 export interface TeamMember {

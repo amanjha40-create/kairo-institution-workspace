@@ -94,3 +94,51 @@ export function ConfigurationErrorState({ message }: { message: string }) {
     </div>
   );
 }
+
+export function PaginationState({
+  page,
+  totalPages,
+  pageSize,
+  total,
+  itemLabel,
+  onPrevious,
+  onNext,
+  previousDisabled,
+  nextDisabled,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  total: number;
+  itemLabel: string;
+  onPrevious: () => void;
+  onNext: () => void;
+  previousDisabled: boolean;
+  nextDisabled: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-xs text-muted-foreground">
+        Page {page} of {Math.max(totalPages, 1)} · {pageSize} per page · {total} total {itemLabel}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={previousDisabled}
+          onClick={onPrevious}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={nextDisabled}
+          onClick={onNext}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}

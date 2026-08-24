@@ -120,6 +120,7 @@ interface InstitutionRepository {
       graduationPeriod?: string;
       studentId?: string;
       verificationStatus?: string | "all";
+      page?: number;
       pageSize?: number;
     },
   ) => Promise<InstitutionPeopleDirectory>;
@@ -161,7 +162,10 @@ interface InstitutionRepository {
     newPassword: string;
     confirmPassword: string;
   }) => Promise<void>;
-  getNotifications: () => Promise<InstitutionNotificationCenter>;
+  getNotifications: (filters?: {
+    page?: number;
+    pageSize?: number;
+  }) => Promise<InstitutionNotificationCenter>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   inviteTeamMember: (
@@ -554,9 +558,15 @@ function demoInstitutionRepository(): InstitutionRepository {
     },
     async getPeople() {
       const state = await getDemoInstitutionState();
+      const pageSize = 25;
       return delay({
         items: cloneFixture(state.people),
         total: state.people.length,
+        page: 1,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(state.people.length / pageSize)),
+        offset: 0,
+        limit: pageSize,
       });
     },
     async getPerson(_organizationId, id) {
@@ -689,15 +699,18 @@ function demoInstitutionRepository(): InstitutionRepository {
     async changePassword() {
       return delay(undefined);
     },
-    async getNotifications() {
+    async getNotifications(filters) {
+      const pageSize = Math.max(filters?.pageSize ?? 10, 1);
+      const page = Math.max(filters?.page ?? 1, 1);
+      const items: InstitutionNotificationCenter["items"] = [];
       return delay({
-        items: [],
+        items,
         total: 0,
-        page: 1,
-        pageSize: 10,
+        page,
+        pageSize,
         totalPages: 0,
-        offset: 0,
-        limit: 10,
+        offset: (page - 1) * pageSize,
+        limit: pageSize,
         unreadCount: 0,
       });
     },
@@ -1087,8 +1100,8 @@ function backendInstitutionRepository(): InstitutionRepository {
     async changePassword(payload) {
       return changeInstitutionUserPassword(payload);
     },
-    async getNotifications() {
-      return fetchInstitutionNotificationCenter();
+    async getNotifications(filters) {
+      return fetchInstitutionNotificationCenter(filters);
     },
     async markNotificationRead(id) {
       return markInstitutionNotificationReadInBackend(id);
@@ -1289,6 +1302,7 @@ export async function getInstitutionPeople(
     graduationPeriod?: string;
     studentId?: string;
     verificationStatus?: string | "all";
+    page?: number;
     pageSize?: number;
   },
 ): Promise<InstitutionPeopleDirectory> {
@@ -1375,8 +1389,11 @@ export async function changeInstitutionPassword(payload: {
   return institutionRepository.changePassword(payload);
 }
 
-export async function getInstitutionNotifications(): Promise<InstitutionNotificationCenter> {
-  return institutionRepository.getNotifications();
+export async function getInstitutionNotifications(filters?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<InstitutionNotificationCenter> {
+  return institutionRepository.getNotifications(filters);
 }
 
 export async function markInstitutionNotificationRead(id: string) {

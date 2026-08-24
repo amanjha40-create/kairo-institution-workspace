@@ -570,6 +570,12 @@ export interface InstitutionPeopleQueryInput {
   graduationPeriod?: string;
   studentId?: string;
   verificationStatus?: string | "all";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface InstitutionNotificationsQueryInput {
+  page?: number;
   pageSize?: number;
 }
 
@@ -2110,6 +2116,7 @@ export async function getInstitutionOrganizationPeople(
         input.verificationStatus && input.verificationStatus !== "all"
           ? input.verificationStatus
           : undefined,
+      page: input.page ?? 1,
       page_size: input.pageSize ?? 100,
     });
     const payload = await apiRequest<BackendPageResponse<BackendInstitutionPersonListItemResponse>>(
@@ -2123,6 +2130,11 @@ export async function getInstitutionOrganizationPeople(
     return {
       items: payload.items.map(mapInstitutionPersonListItem),
       total: payload.total,
+      page: payload.page,
+      pageSize: payload.page_size,
+      totalPages: payload.total_pages,
+      offset: payload.offset,
+      limit: payload.limit,
     };
   });
 }
@@ -2217,11 +2229,15 @@ export async function getInstitutionDashboard(orgPublicId: string) {
   });
 }
 
-export async function getInstitutionNotificationCenter() {
+export async function getInstitutionNotificationCenter(
+  input: InstitutionNotificationsQueryInput = {},
+) {
   return withInstitutionAccessToken(async (accessToken) => {
+    const page = input.page ?? 1;
+    const pageSize = input.pageSize ?? 10;
     const [notifications, unread] = await Promise.all([
       apiRequest<BackendPageResponse<BackendUserNotificationResponse>>(
-        "/api/v1/notifications?paginate=true&page=1&page_size=10&sort_order=desc",
+        `/api/v1/notifications?paginate=true&page=${page}&page_size=${pageSize}&sort_order=desc`,
         { method: "GET" },
         accessToken,
       ),

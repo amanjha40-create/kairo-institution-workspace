@@ -210,8 +210,14 @@ describe("institution verification routes", () => {
       await screen.findByRole("heading", { name: "Verification Requests" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Amina Rahman").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /Verification summary cards are hidden until the backend exposes authoritative aggregate metadata/i,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getAllByText("Daniel Okafor").length).toBeGreaterThan(0);
+    expect(verificationApi.getInstitutionOrganizationVerificationRequests).toHaveBeenCalledTimes(1);
     expect(verificationApi.getInstitutionOrganizationVerificationRequests).toHaveBeenCalledWith(
       "inst_northbridge",
       expect.objectContaining({ pageSize: 25, sortBy: "created_at" }),

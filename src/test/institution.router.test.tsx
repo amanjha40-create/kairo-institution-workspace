@@ -243,7 +243,7 @@ describe("institution routing and permissions", () => {
     expect(
       await screen.findByRole("heading", { name: "Institution workspace request submitted" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Northbridge University")).toBeInTheDocument();
+    expect(screen.getAllByText("Northbridge University").length).toBeGreaterThan(0);
     expect(screen.queryByText("No signup request found")).not.toBeInTheDocument();
   });
 

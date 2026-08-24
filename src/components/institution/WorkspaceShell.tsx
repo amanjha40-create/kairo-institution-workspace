@@ -15,6 +15,7 @@ import {
   institutionAppConfig,
 } from "@/lib/institution/config";
 import { formatDateTime } from "@/lib/institution/format";
+import { resolveInstitutionNotificationPath } from "@/lib/institution/notifications";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +44,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
 
   const notificationsQuery = useQuery({
     queryKey: institutionQueryKeys.notifications(),
-    queryFn: getInstitutionNotifications,
+    queryFn: () => getInstitutionNotifications(),
     enabled: Boolean(session),
     staleTime: 30_000,
   });
@@ -51,7 +52,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const markReadMutation = useMutation({
     mutationFn: markInstitutionNotificationRead,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: institutionQueryKeys.notifications() });
+      await queryClient.invalidateQueries({ queryKey: ["institution", "notifications"] });
       await queryClient.invalidateQueries({
         queryKey: institutionQueryKeys.notificationUnreadCount,
       });
@@ -61,7 +62,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const markAllReadMutation = useMutation({
     mutationFn: markAllInstitutionNotificationsRead,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: institutionQueryKeys.notifications() });
+      await queryClient.invalidateQueries({ queryKey: ["institution", "notifications"] });
       await queryClient.invalidateQueries({
         queryKey: institutionQueryKeys.notificationUnreadCount,
       });
@@ -129,20 +130,29 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               </button>
               {notificationsOpen && (
                 <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-white p-1 shadow-lg">
-                  <div className="flex items-center justify-between px-3 py-2">
+                  <div className="flex items-center justify-between gap-3 px-3 py-2">
                     <div className="text-sm font-medium">Notifications</div>
-                    <button
-                      type="button"
-                      className="text-xs text-[color:var(--kairo-navy)] hover:underline disabled:text-muted-foreground"
-                      disabled={
-                        markAllReadMutation.isPending ||
-                        !notificationsQuery.data ||
-                        notificationsQuery.data.unreadCount === 0
-                      }
-                      onClick={() => markAllReadMutation.mutate()}
-                    >
-                      Mark all read
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        to="/institution/notifications"
+                        className="text-xs text-[color:var(--kairo-navy)] hover:underline"
+                        onClick={() => setNotificationsOpen(false)}
+                      >
+                        View all
+                      </Link>
+                      <button
+                        type="button"
+                        className="text-xs text-[color:var(--kairo-navy)] hover:underline disabled:text-muted-foreground"
+                        disabled={
+                          markAllReadMutation.isPending ||
+                          !notificationsQuery.data ||
+                          notificationsQuery.data.unreadCount === 0
+                        }
+                        onClick={() => markAllReadMutation.mutate()}
+                      >
+                        Mark all read
+                      </button>
+                    </div>
                   </div>
                   {notificationsQuery.isLoading ? (
                     <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
@@ -161,27 +171,53 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                           key={notification.id}
                           className="border-t border-border px-3 py-3 first:border-t-0"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">{notification.title}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {notification.body}
+                          {(() => {
+                            const destination = resolveInstitutionNotificationPath(
+                              notification.metadata,
+                            );
+
+                            const body = (
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium">{notification.title}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {notification.body}
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-muted-foreground">
+                                    {formatDateTime(notification.createdAt)}
+                                  </div>
+                                </div>
+                                {!notification.readAt ? (
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-[11px] text-[color:var(--kairo-navy)] hover:underline"
+                                    disabled={markReadMutation.isPending}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      markReadMutation.mutate(notification.id);
+                                    }}
+                                  >
+                                    Mark read
+                                  </button>
+                                ) : null}
                               </div>
-                              <div className="mt-1 text-[11px] text-muted-foreground">
-                                {formatDateTime(notification.createdAt)}
-                              </div>
-                            </div>
-                            {!notification.readAt ? (
-                              <button
-                                type="button"
-                                className="shrink-0 text-[11px] text-[color:var(--kairo-navy)] hover:underline"
-                                disabled={markReadMutation.isPending}
-                                onClick={() => markReadMutation.mutate(notification.id)}
+                            );
+
+                            if (!destination) {
+                              return body;
+                            }
+
+                            return (
+                              <a
+                                href={destination}
+                                className="block rounded-md px-1 py-1 hover:bg-secondary/60"
+                                onClick={() => setNotificationsOpen(false)}
                               >
-                                Mark read
-                              </button>
-                            ) : null}
-                          </div>
+                                {body}
+                              </a>
+                            );
+                          })()}
                         </li>
                       ))}
                     </ul>
@@ -252,6 +288,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                 <div className="text-xs text-muted-foreground">
                   {session ? roleLabels[session.role] : ""} · {session?.email}
                 </div>
+                <Link
+                  to="/institution/notifications"
+                  onClick={() => setMobileOpen(false)}
+                  className="mt-2 inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-secondary"
+                >
+                  <Bell className="h-4 w-4" /> Notifications
+                </Link>
                 <button
                   onClick={handleSignOut}
                   className="mt-2 inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-secondary"

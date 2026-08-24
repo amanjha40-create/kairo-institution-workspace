@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InstitutionIndexRouteImport } from './routes/institution.index'
 import { Route as InstitutionTeamRouteImport } from './routes/institution.team'
 import { Route as InstitutionSettingsRouteImport } from './routes/institution.settings'
+import { Route as InstitutionNotificationsRouteImport } from './routes/institution.notifications'
 import { Route as InstitutionLoginRouteImport } from './routes/institution.login'
 import { Route as InstitutionVerificationsIndexRouteImport } from './routes/institution.verifications.index'
 import { Route as InstitutionSignupIndexRouteImport } from './routes/institution.signup.index'
@@ -52,6 +53,12 @@ const InstitutionSettingsRoute = InstitutionSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => InstitutionRoute,
 } as any)
+const InstitutionNotificationsRoute =
+  InstitutionNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => InstitutionRoute,
+  } as any)
 const InstitutionLoginRoute = InstitutionLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/institution': typeof InstitutionRouteWithChildren
   '/institution/login': typeof InstitutionLoginRoute
+  '/institution/notifications': typeof InstitutionNotificationsRoute
   '/institution/settings': typeof InstitutionSettingsRoute
   '/institution/team': typeof InstitutionTeamRoute
   '/institution/': typeof InstitutionIndexRoute
@@ -140,6 +148,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/institution/login': typeof InstitutionLoginRoute
+  '/institution/notifications': typeof InstitutionNotificationsRoute
   '/institution/settings': typeof InstitutionSettingsRoute
   '/institution/team': typeof InstitutionTeamRoute
   '/institution': typeof InstitutionIndexRoute
@@ -160,6 +169,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/institution': typeof InstitutionRouteWithChildren
   '/institution/login': typeof InstitutionLoginRoute
+  '/institution/notifications': typeof InstitutionNotificationsRoute
   '/institution/settings': typeof InstitutionSettingsRoute
   '/institution/team': typeof InstitutionTeamRoute
   '/institution/': typeof InstitutionIndexRoute
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/'
     | '/institution'
     | '/institution/login'
+    | '/institution/notifications'
     | '/institution/settings'
     | '/institution/team'
     | '/institution/'
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/institution/login'
+    | '/institution/notifications'
     | '/institution/settings'
     | '/institution/team'
     | '/institution'
@@ -218,6 +230,7 @@ export interface FileRouteTypes {
     | '/'
     | '/institution'
     | '/institution/login'
+    | '/institution/notifications'
     | '/institution/settings'
     | '/institution/team'
     | '/institution/'
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/institution/settings'
       preLoaderRoute: typeof InstitutionSettingsRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
+    '/institution/notifications': {
+      id: '/institution/notifications'
+      path: '/notifications'
+      fullPath: '/institution/notifications'
+      preLoaderRoute: typeof InstitutionNotificationsRouteImport
       parentRoute: typeof InstitutionRoute
     }
     '/institution/login': {
@@ -365,6 +385,7 @@ declare module '@tanstack/react-router' {
 
 interface InstitutionRouteChildren {
   InstitutionLoginRoute: typeof InstitutionLoginRoute
+  InstitutionNotificationsRoute: typeof InstitutionNotificationsRoute
   InstitutionSettingsRoute: typeof InstitutionSettingsRoute
   InstitutionTeamRoute: typeof InstitutionTeamRoute
   InstitutionIndexRoute: typeof InstitutionIndexRoute
@@ -383,6 +404,7 @@ interface InstitutionRouteChildren {
 
 const InstitutionRouteChildren: InstitutionRouteChildren = {
   InstitutionLoginRoute: InstitutionLoginRoute,
+  InstitutionNotificationsRoute: InstitutionNotificationsRoute,
   InstitutionSettingsRoute: InstitutionSettingsRoute,
   InstitutionTeamRoute: InstitutionTeamRoute,
   InstitutionIndexRoute: InstitutionIndexRoute,

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { getInstitutionPeople } from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
@@ -21,6 +21,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  PaginationState,
   PermissionDeniedState,
   ServiceUnavailableState,
 } from "@/components/institution/PageStates";
@@ -41,6 +42,8 @@ const verificationStatuses = [
   { value: "expired", label: "Expired" },
 ] as const;
 
+const PEOPLE_PAGE_SIZE = 25;
+
 function PeoplePage() {
   const { session } = useInstitutionAuth();
   const permissions = getInstitutionPermissions(session);
@@ -48,34 +51,18 @@ function PeoplePage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<InstitutionStatus | "all">("all");
   const [verificationFilter, setVerificationFilter] = useState("all");
-  const [programmeFilter, setProgrammeFilter] = useState("all");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [graduationFilter, setGraduationFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   const filters = useMemo(
     () => ({
       search: query || undefined,
       lifecycleStatus: statusFilter,
       verificationStatus: verificationFilter,
-      programme: programmeFilter === "all" ? undefined : programmeFilter,
-      department: departmentFilter === "all" ? undefined : departmentFilter,
-      graduationPeriod: graduationFilter === "all" ? undefined : graduationFilter,
-      pageSize: 100,
+      page,
+      pageSize: PEOPLE_PAGE_SIZE,
     }),
-    [departmentFilter, graduationFilter, programmeFilter, query, statusFilter, verificationFilter],
+    [page, query, statusFilter, verificationFilter],
   );
-
-  const optionsQuery = useQuery({
-    queryKey: institutionQueryKeys.people(organizationId, { pageSize: 100 }),
-    queryFn: () => {
-      if (!organizationId) {
-        throw new Error("An active institution context is required.");
-      }
-
-      return getInstitutionPeople(organizationId, { pageSize: 100 });
-    },
-    enabled: Boolean(organizationId) && permissions.canViewPeople,
-  });
 
   const peopleQuery = useQuery({
     queryKey: institutionQueryKeys.people(organizationId, filters),
@@ -90,32 +77,17 @@ function PeoplePage() {
   });
 
   const data = peopleQuery.data;
-  const filterSource = useMemo(
-    () => optionsQuery.data?.items ?? data?.items ?? [],
-    [data?.items, optionsQuery.data?.items],
-  );
+  const totalPages = Math.max(data?.totalPages ?? 0, 1);
 
-  const programmes = useMemo(
-    () =>
-      Array.from(
-        new Set(filterSource.map((person) => person.relationship.programme).filter(Boolean)),
-      ),
-    [filterSource],
-  );
-  const departments = useMemo(
-    () =>
-      Array.from(
-        new Set(filterSource.map((person) => person.relationship.department).filter(Boolean)),
-      ),
-    [filterSource],
-  );
-  const graduationPeriods = useMemo(
-    () =>
-      Array.from(
-        new Set(filterSource.map((person) => person.relationship.graduationPeriod).filter(Boolean)),
-      ),
-    [filterSource],
-  );
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    if (data.totalPages > 0 && page > data.totalPages) {
+      setPage(data.totalPages);
+    }
+  }, [data, page]);
 
   if (!permissions.canViewPeople) {
     return <PermissionDeniedState />;
@@ -145,13 +117,19 @@ function PeoplePage() {
             className="pl-9"
             placeholder="Search name, student ID, programme, department…"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(1);
+            }}
           />
         </div>
         <div className="flex flex-wrap gap-2">
           <Select
             value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as InstitutionStatus | "all")}
+            onValueChange={(value) => {
+              setStatusFilter(value as InstitutionStatus | "all");
+              setPage(1);
+            }}
           >
             <SelectTrigger className="w-[170px]">
               <SelectValue placeholder="Lifecycle" />
@@ -164,7 +142,13 @@ function PeoplePage() {
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={verificationFilter} onValueChange={setVerificationFilter}>
+          <Select
+            value={verificationFilter}
+            onValueChange={(value) => {
+              setVerificationFilter(value);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Verification" />
             </SelectTrigger>
@@ -176,46 +160,11 @@ function PeoplePage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Programme" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All programmes</SelectItem>
-              {programmes.map((programme) => (
-                <SelectItem key={programme} value={programme}>
-                  {programme}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {departments.map((department) => (
-                <SelectItem key={department} value={department}>
-                  {department}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={graduationFilter} onValueChange={setGraduationFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Graduation" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All graduation</SelectItem>
-              {graduationPeriods.map((period) => (
-                <SelectItem key={period} value={period}>
-                  {period}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Programme, department, and graduation filter options are hidden until the backend returns
+          authoritative filter metadata for the full institution directory.
+        </p>
       </div>
 
       {peopleQuery.isLoading ? (
@@ -240,11 +189,15 @@ function PeoplePage() {
         />
       ) : (
         <>
-          {data.total > data.items.length && (
-            <p className="text-xs text-muted-foreground">
-              Showing the first {data.items.length} people out of {data.total}.
-            </p>
-          )}
+          <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Showing {(data.offset || 0) + 1}-
+              {Math.min((data.offset || 0) + data.items.length, data.total)} of {data.total} people
+            </span>
+            <span>
+              Page {data.page} of {totalPages}
+            </span>
+          </div>
 
           <div className="hidden overflow-hidden rounded-lg border border-border bg-white md:block">
             <table className="w-full text-sm">
@@ -355,6 +308,18 @@ function PeoplePage() {
               </Link>
             ))}
           </div>
+
+          <PaginationState
+            page={data.page}
+            totalPages={totalPages}
+            pageSize={data.pageSize}
+            total={data.total}
+            itemLabel="people"
+            onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+            onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+            previousDisabled={data.page <= 1 || peopleQuery.isFetching}
+            nextDisabled={data.page >= totalPages || peopleQuery.isFetching}
+          />
         </>
       )}
     </div>

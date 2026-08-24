@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { getInstitutionOrganizationVerificationRequests } from "@/lib/institution/api";
@@ -25,6 +25,7 @@ import {
   LoadingState,
   PermissionDeniedState,
   ServiceUnavailableState,
+  PaginationState,
 } from "@/components/institution/PageStates";
 import { formatDate } from "@/lib/institution/format";
 import type {
@@ -37,43 +38,6 @@ import type {
 export const Route = createFileRoute("/institution/verifications/")({
   component: VerificationsPage,
 });
-
-const SUMMARY = [
-  { key: "pending", label: "Pending" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "awaiting_clarification", label: "Awaiting Clarification" },
-  { key: "completed", label: "Completed" },
-] as const;
-
-const SUMMARY_STATUSES = {
-  pending: [
-    "pending",
-    "draft",
-    "pending_subject_acceptance",
-    "accepted",
-    "pending_subject_submission",
-    "pending_admin_review",
-    "pending_admin_re_review",
-    "pending_organization_acceptance",
-  ],
-  in_progress: [
-    "in_progress",
-    "approved_for_organization_verification",
-    "pending_organization_resolution",
-  ],
-  awaiting_clarification: [
-    "awaiting_information",
-    "awaiting_clarification",
-    "awaiting_subject_corrections",
-  ],
-  completed: ["verified", "confirmed", "rejected", "discrepancy", "cancelled", "expired", "closed"],
-} satisfies Record<(typeof SUMMARY)[number]["key"], VerificationStatus[]>;
-
-function isBackendStatusFilter(
-  value: (typeof SUMMARY)[number]["key"],
-): value is Exclude<(typeof SUMMARY)[number]["key"], "completed"> {
-  return value !== "completed";
-}
 
 function VerificationsPage() {
   const { session } = useInstitutionAuth();
@@ -117,45 +81,6 @@ function VerificationsPage() {
     enabled: Boolean(organizationId),
   });
 
-  const summaryCountDefinitions = useMemo(
-    () =>
-      SUMMARY.flatMap((item) =>
-        SUMMARY_STATUSES[item.key].map((status) => ({
-          category: item.key,
-          status,
-        })),
-      ),
-    [],
-  );
-
-  const summaryCountQueries = useQueries({
-    queries: summaryCountDefinitions.map(({ category, status }) => ({
-      queryKey: institutionQueryKeys.verificationSummaryCount(organizationId, category, status),
-      queryFn: async () => {
-        if (!organizationId) {
-          throw new Error("An active institution context is required.");
-        }
-
-        const response = await getInstitutionOrganizationVerificationRequests(organizationId, {
-          status,
-          page: 1,
-          pageSize: 1,
-        });
-
-        return response.total;
-      },
-      enabled: Boolean(organizationId) && permissions.canViewVerificationRequests,
-    })),
-  });
-
-  const summaryCounts = useMemo(() => {
-    return summaryCountDefinitions.reduce<Record<string, number>>((counts, definition, index) => {
-      counts[definition.category] =
-        (counts[definition.category] ?? 0) + (summaryCountQueries[index]?.data ?? 0);
-      return counts;
-    }, {});
-  }, [summaryCountDefinitions, summaryCountQueries]);
-
   if (!permissions.canViewVerificationRequests) {
     return <PermissionDeniedState />;
   }
@@ -174,37 +99,6 @@ function VerificationsPage() {
           Review education verification requests routed to your institution workspace.
         </p>
       </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {SUMMARY.map((item) => {
-          const isFilterable = isBackendStatusFilter(item.key);
-          const active = isFilterable && statusFilter === item.key;
-
-          return (
-            <button
-              key={item.key}
-              type="button"
-              disabled={!isFilterable}
-              onClick={() => {
-                if (!isFilterable) return;
-                setStatusFilter(active ? "all" : item.key);
-                setPage(1);
-              }}
-              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-                active
-                  ? "border-[color:var(--kairo-navy)] bg-white shadow-sm"
-                  : "border-border bg-white"
-              } ${isFilterable ? "hover:border-[color:var(--kairo-teal)]" : "cursor-default"}`}
-            >
-              <div className="text-xs font-medium text-muted-foreground">{item.label}</div>
-              <div className="mt-1 text-xl font-semibold text-foreground">
-                {summaryCounts[item.key] ?? 0}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -329,6 +223,11 @@ function VerificationsPage() {
           </button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Verification summary cards are hidden until the backend exposes authoritative aggregate
+        metadata. The inbox below remains the source of truth.
+      </p>
 
       {isLoading ? (
         <LoadingState />
@@ -463,24 +362,17 @@ function VerificationsPage() {
             ))}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-md border border-border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={data.page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={data.page >= data.totalPages}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              Next
-            </button>
-          </div>
+          <PaginationState
+            page={data.page}
+            totalPages={Math.max(data.totalPages, 1)}
+            pageSize={data.pageSize}
+            total={data.total}
+            itemLabel="requests"
+            onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+            onNext={() => setPage((current) => current + 1)}
+            previousDisabled={data.page <= 1}
+            nextDisabled={data.page >= data.totalPages}
+          />
         </>
       )}
     </div>
