@@ -2420,10 +2420,13 @@ export async function updateInstitutionVerificationPriority(
   });
 }
 
-export async function getInstitutionVerificationEvidence(requestPublicId: string) {
+export async function getInstitutionVerificationEvidence(
+  orgPublicId: string,
+  requestPublicId: string,
+) {
   return withInstitutionAccessToken(async (accessToken) => {
     const payload = await apiRequest<unknown>(
-      `/api/v1/verification-requests/${requestPublicId}/evidence`,
+      `/api/v1/organizations/${orgPublicId}/institution/verification-requests/${requestPublicId}/evidence`,
       {
         method: "GET",
       },
@@ -2434,10 +2437,13 @@ export async function getInstitutionVerificationEvidence(requestPublicId: string
   });
 }
 
-export async function getInstitutionVerificationTimeline(requestPublicId: string) {
+export async function getInstitutionVerificationTimeline(
+  orgPublicId: string,
+  requestPublicId: string,
+) {
   return withInstitutionAccessToken(async (accessToken) => {
     const payload = await apiRequest<unknown>(
-      `/api/v1/verification-requests/${requestPublicId}/timeline`,
+      `/api/v1/organizations/${orgPublicId}/institution/verification-requests/${requestPublicId}/timeline`,
       {
         method: "GET",
       },

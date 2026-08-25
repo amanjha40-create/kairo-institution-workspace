@@ -290,7 +290,7 @@ describe("institution repositories and public verification flows", () => {
     expect(request.claim.graduationYear).toBe("2024");
   });
 
-  it("normalizes sparse evidence and nested timeline payloads from the shared verification contract", async () => {
+  it("normalizes sparse evidence and nested timeline payloads from the institution-scoped contract", async () => {
     vi.resetModules();
     vi.stubEnv("VITE_APP_ENV", "test");
     vi.stubEnv("VITE_DEMO_MODE", "false");
@@ -299,7 +299,10 @@ describe("institution repositories and public verification flows", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(typeof input === "string" ? input : input.toString());
 
-      if (url.pathname.endsWith("/verification-requests/vr_001/evidence")) {
+      if (
+        url.pathname ===
+        "/api/v1/organizations/inst_001/institution/verification-requests/vr_001/evidence"
+      ) {
         return new Response(
           JSON.stringify({
             public_id: "evidence_001",
@@ -326,7 +329,10 @@ describe("institution repositories and public verification flows", () => {
         );
       }
 
-      if (url.pathname.endsWith("/verification-requests/vr_001/timeline")) {
+      if (
+        url.pathname ===
+        "/api/v1/organizations/inst_001/institution/verification-requests/vr_001/timeline"
+      ) {
         return new Response(
           JSON.stringify({
             timeline: {
@@ -370,8 +376,8 @@ describe("institution repositories and public verification flows", () => {
       expiresAt: "2099-01-01T00:00:00.000Z",
     });
 
-    const evidence = await backend.getInstitutionVerificationEvidence("vr_001");
-    const timeline = await backend.getInstitutionVerificationTimeline("vr_001");
+    const evidence = await backend.getInstitutionVerificationEvidence("inst_001", "vr_001");
+    const timeline = await backend.getInstitutionVerificationTimeline("inst_001", "vr_001");
 
     expect(evidence).toEqual([
       expect.objectContaining({
@@ -386,6 +392,24 @@ describe("institution repositories and public verification flows", () => {
         label: "Admin Finalized",
       }),
     ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/api/v1/organizations/inst_001/institution/verification-requests/vr_001/evidence",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer access_token_123",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/api/v1/organizations/inst_001/institution/verification-requests/vr_001/timeline",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer access_token_123",
+        }),
+      }),
+    );
   });
 
   it("falls back to authoritative verification and people totals when the dedicated dashboard endpoint is unavailable", async () => {
@@ -729,5 +753,27 @@ describe("institution repositories and public verification flows", () => {
     expect(backendSource).toContain('"/api/v1/account/sessions"');
     expect(backendSource).not.toContain("/api/v1/users/me/account-settings");
     expect(backendSource).not.toContain("/api/v1/users/me/sessions");
+  });
+
+  it("keeps obsolete generic evidence and timeline routes out of the backend adapter source", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const backendSource = await readFile(
+      join(process.cwd(), "src/lib/institution/backend.ts"),
+      "utf8",
+    );
+
+    expect(backendSource).toContain(
+      "/api/v1/organizations/${orgPublicId}/institution/verification-requests/${requestPublicId}/evidence",
+    );
+    expect(backendSource).toContain(
+      "/api/v1/organizations/${orgPublicId}/institution/verification-requests/${requestPublicId}/timeline",
+    );
+    expect(backendSource).not.toContain(
+      "/api/v1/verification-requests/${requestPublicId}/evidence",
+    );
+    expect(backendSource).not.toContain(
+      "/api/v1/verification-requests/${requestPublicId}/timeline",
+    );
   });
 });

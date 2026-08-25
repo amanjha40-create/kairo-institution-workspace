@@ -21,10 +21,10 @@ export const institutionQueryKeys = {
       status,
     ] as const,
   verification: (requestId: string) => ["institution", "verification", requestId] as const,
-  verificationEvidence: (requestId: string) =>
-    ["institution", "verification", requestId, "evidence"] as const,
-  verificationTimeline: (requestId: string) =>
-    ["institution", "verification", requestId, "timeline"] as const,
+  verificationEvidence: (organizationId: string | undefined, requestId: string) =>
+    ["institution", "verification", organizationId ?? "none", requestId, "evidence"] as const,
+  verificationTimeline: (organizationId: string | undefined, requestId: string) =>
+    ["institution", "verification", organizationId ?? "none", requestId, "timeline"] as const,
   people: (
     organizationId?: string,
     filters?: Record<string, string | number | boolean | undefined>,

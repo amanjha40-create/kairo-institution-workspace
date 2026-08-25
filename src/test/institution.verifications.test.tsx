@@ -257,8 +257,14 @@ describe("institution verification routes", () => {
       "inst_northbridge",
       "vr_001",
     );
-    expect(verificationApi.getInstitutionVerificationEvidenceItems).toHaveBeenCalledWith("vr_001");
-    expect(verificationApi.getInstitutionVerificationTimelineItems).toHaveBeenCalledWith("vr_001");
+    expect(verificationApi.getInstitutionVerificationEvidenceItems).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "vr_001",
+    );
+    expect(verificationApi.getInstitutionVerificationTimelineItems).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "vr_001",
+    );
   });
 
   it("renders verified evidence and canonical timeline events", async () => {

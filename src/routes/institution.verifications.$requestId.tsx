@@ -81,14 +81,26 @@ function RequestDetailPage() {
     enabled: Boolean(organizationId),
   });
   const evidenceQuery = useQuery({
-    queryKey: institutionQueryKeys.verificationEvidence(requestId),
-    queryFn: () => getInstitutionVerificationEvidenceItems(requestId),
-    enabled: Boolean(data),
+    queryKey: institutionQueryKeys.verificationEvidence(organizationId, requestId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionVerificationEvidenceItems(organizationId, requestId);
+    },
+    enabled: Boolean(data) && Boolean(organizationId),
   });
   const timelineQuery = useQuery({
-    queryKey: institutionQueryKeys.verificationTimeline(requestId),
-    queryFn: () => getInstitutionVerificationTimelineItems(requestId),
-    enabled: Boolean(data),
+    queryKey: institutionQueryKeys.verificationTimeline(organizationId, requestId),
+    queryFn: () => {
+      if (!organizationId) {
+        throw new Error("An active institution context is required.");
+      }
+
+      return getInstitutionVerificationTimelineItems(organizationId, requestId);
+    },
+    enabled: Boolean(data) && Boolean(organizationId),
   });
   const teamQuery = useQuery({
     queryKey: institutionQueryKeys.team(organizationId),
@@ -139,8 +151,12 @@ function RequestDetailPage() {
   const invalidate = async () => {
     await Promise.all([
       qc.invalidateQueries({ queryKey: institutionQueryKeys.verification(requestId) }),
-      qc.invalidateQueries({ queryKey: institutionQueryKeys.verificationEvidence(requestId) }),
-      qc.invalidateQueries({ queryKey: institutionQueryKeys.verificationTimeline(requestId) }),
+      qc.invalidateQueries({
+        queryKey: institutionQueryKeys.verificationEvidence(organizationId, requestId),
+      }),
+      qc.invalidateQueries({
+        queryKey: institutionQueryKeys.verificationTimeline(organizationId, requestId),
+      }),
       qc.invalidateQueries({ queryKey: institutionQueryKeys.verifications(organizationId) }),
       qc.invalidateQueries({ queryKey: ["institution", "verification-inbox", organizationId] }),
       qc.invalidateQueries({ queryKey: institutionQueryKeys.dashboard(organizationId) }),

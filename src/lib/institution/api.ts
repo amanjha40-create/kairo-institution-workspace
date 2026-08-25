@@ -80,8 +80,8 @@ interface InstitutionRepository {
     organizationId: string,
     id: string,
   ) => Promise<VerificationRequest | undefined>;
-  getVerificationEvidence: (id: string) => Promise<EvidenceFile[]>;
-  getVerificationTimeline: (id: string) => Promise<TimelineEvent[]>;
+  getVerificationEvidence: (organizationId: string, id: string) => Promise<EvidenceFile[]>;
+  getVerificationTimeline: (organizationId: string, id: string) => Promise<TimelineEvent[]>;
   respondToVerification: (
     id: string,
     action: "confirm" | "discrepancy",
@@ -412,7 +412,7 @@ function demoInstitutionRepository(): InstitutionRepository {
       const state = await getDemoInstitutionState();
       return delay(cloneFixture(state.requests.find((request) => request.id === id)));
     },
-    async getVerificationEvidence(id) {
+    async getVerificationEvidence(_organizationId, id) {
       const state = await getDemoInstitutionState();
       const request = state.requests.find((candidate) => candidate.id === id);
       if (!request) {
@@ -421,7 +421,7 @@ function demoInstitutionRepository(): InstitutionRepository {
 
       return delay(cloneFixture(request.evidence));
     },
-    async getVerificationTimeline(id) {
+    async getVerificationTimeline(_organizationId, id) {
       const state = await getDemoInstitutionState();
       const request = state.requests.find((candidate) => candidate.id === id);
       if (!request) {
@@ -994,11 +994,11 @@ function backendInstitutionRepository(): InstitutionRepository {
     async getVerificationRequest(organizationId, id) {
       return getInstitutionVerificationRequestDetail(organizationId, id);
     },
-    async getVerificationEvidence(id) {
-      return getInstitutionVerificationEvidence(id);
+    async getVerificationEvidence(organizationId, id) {
+      return getInstitutionVerificationEvidence(organizationId, id);
     },
-    async getVerificationTimeline(id) {
-      return getInstitutionVerificationTimeline(id);
+    async getVerificationTimeline(organizationId, id) {
+      return getInstitutionVerificationTimeline(organizationId, id);
     },
     async respondToVerification(id, action, payload) {
       if (action === "confirm") {
@@ -1259,14 +1259,18 @@ export async function getInstitutionOrganizationVerificationRequests(
   return institutionRepository.getVerificationRequests(organizationId, filters);
 }
 
-export async function getInstitutionVerificationEvidenceItems(id: string): Promise<EvidenceFile[]> {
-  return institutionRepository.getVerificationEvidence(id);
+export async function getInstitutionVerificationEvidenceItems(
+  organizationId: string,
+  id: string,
+): Promise<EvidenceFile[]> {
+  return institutionRepository.getVerificationEvidence(organizationId, id);
 }
 
 export async function getInstitutionVerificationTimelineItems(
+  organizationId: string,
   id: string,
 ): Promise<TimelineEvent[]> {
-  return institutionRepository.getVerificationTimeline(id);
+  return institutionRepository.getVerificationTimeline(organizationId, id);
 }
 
 export async function assignInstitutionVerificationRequestReviewer(
