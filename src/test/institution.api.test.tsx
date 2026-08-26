@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-async function importApiModule(demoMode: "true" | "false") {
+async function importApiModule(options: { demoMode: "true" | "false"; apiBaseUrl?: string }) {
   vi.resetModules();
   vi.stubEnv("VITE_APP_ENV", "test");
-  vi.stubEnv("VITE_DEMO_MODE", demoMode);
-  vi.stubEnv("VITE_API_BASE_URL", "");
+  vi.stubEnv("VITE_DEMO_MODE", options.demoMode);
+  vi.stubEnv("VITE_API_BASE_URL", options.apiBaseUrl ?? "");
   return import("@/lib/institution/api");
 }
 
@@ -30,7 +30,7 @@ describe("institution repositories and public verification flows", () => {
   });
 
   it("protects the final active owner from removal", async () => {
-    const api = await importApiModule("true");
+    const api = await importApiModule({ demoMode: "true" });
 
     await expect(api.removeTeamMember("inst_northbridge", "u_priya")).rejects.toMatchObject({
       code: "CONFLICT",
@@ -38,7 +38,7 @@ describe("institution repositories and public verification flows", () => {
   });
 
   it("splits current members from pending invitations in demo mode", async () => {
-    const api = await importApiModule("true");
+    const api = await importApiModule({ demoMode: "true" });
 
     await expect(api.getInstitutionTeam("inst_northbridge")).resolves.toMatchObject({
       members: expect.arrayContaining([
@@ -51,7 +51,7 @@ describe("institution repositories and public verification flows", () => {
   });
 
   it("returns expired, completed, revoked, and invalid magic-link states", async () => {
-    const api = await importApiModule("true");
+    const api = await importApiModule({ demoMode: "true" });
 
     await expect(
       api.getPublicInstitutionVerificationByToken("expired-token"),
@@ -76,7 +76,7 @@ describe("institution repositories and public verification flows", () => {
   });
 
   it("prevents double submission of a magic-link confirmation", async () => {
-    const api = await importApiModule("true");
+    const api = await importApiModule({ demoMode: "true" });
 
     await expect(
       api.confirmPublicInstitutionVerification("valid-token", {
@@ -93,15 +93,15 @@ describe("institution repositories and public verification flows", () => {
     });
   });
 
-  it("supports confirm, discrepancy, and clarification in demo mode and fails closed in production", async () => {
-    let api = await importApiModule("true");
+  it("supports confirm, discrepancy, and clarification in demo mode", async () => {
+    let api = await importApiModule({ demoMode: "true" });
     await expect(
       api.confirmPublicInstitutionVerification("valid-token", { note: "Confirmed" }),
     ).resolves.toMatchObject({
       state: "completed",
     });
 
-    api = await importApiModule("true");
+    api = await importApiModule({ demoMode: "true" });
     await expect(
       api.reportPublicInstitutionVerificationDiscrepancy("valid-token", {
         fields: ["Degree"],
@@ -111,7 +111,7 @@ describe("institution repositories and public verification flows", () => {
       state: "completed",
     });
 
-    api = await importApiModule("true");
+    api = await importApiModule({ demoMode: "true" });
     await expect(
       api.requestPublicInstitutionVerificationClarification("valid-token", {
         fields: ["Supporting document"],
@@ -121,13 +121,228 @@ describe("institution repositories and public verification flows", () => {
     ).resolves.toMatchObject({
       state: "completed",
     });
+  });
 
-    api = await importApiModule("false");
-    await expect(
-      api.confirmPublicInstitutionVerification("valid-token", { note: "Confirmed" }),
-    ).rejects.toMatchObject({
-      code: "API_NOT_CONFIGURED",
+  it("uses the backend public verification GET contract without authenticated workspace headers", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          token: "token_123",
+          state: "valid",
+          expires_at: "2026-08-26T18:00:00Z",
+          request: {
+            reference: "VR-PUBLIC-001",
+            requested_by: "Kairo Verification Operations",
+            purpose: "Education verification request",
+            request_date: "2026-08-26T10:00:00Z",
+            consent_received: true,
+            candidate: {
+              candidate_name: "Amina Rahman",
+              student_id: "NB-2020-014",
+              institution_name: "Northbridge University",
+              degree: "Bachelor of Science",
+              programme: "Computer Science",
+              department: "Engineering",
+              admission_year: "2020",
+              graduation_year: "2024",
+              completion_status: "Completed",
+              additional_note: "Candidate shared supporting evidence.",
+            },
+            evidence: [
+              {
+                id: "evidence_001",
+                name: "Transcript.pdf",
+                type: "transcript",
+                uploaded_by: "Request subject",
+                uploaded_at: "2026-08-26T10:05:00Z",
+                url: "https://files.example.com/transcript.pdf",
+              },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = await importApiModule({
+      demoMode: "false",
+      apiBaseUrl: "https://api.example.com",
     });
+    const result = await api.getPublicInstitutionVerificationByToken("token_123");
+
+    expect(result).toMatchObject({
+      token: "token_123",
+      state: "valid",
+      expiresAt: "2026-08-26T18:00:00Z",
+      request: {
+        reference: "VR-PUBLIC-001",
+        requestedBy: "Kairo Verification Operations",
+        purpose: "Education verification request",
+        consentReceived: true,
+        candidate: expect.objectContaining({
+          candidateName: "Amina Rahman",
+          institutionName: "Northbridge University",
+        }),
+        evidence: [
+          expect.objectContaining({
+            id: "evidence_001",
+            name: "Transcript.pdf",
+            uploadedBy: "Request subject",
+            url: "https://files.example.com/transcript.pdf",
+          }),
+        ],
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/api/v1/public/institution-verifications/token_123",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("maps unknown public tokens to the invalid state without exposing backend distinctions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Not found" } }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = await importApiModule({
+      demoMode: "false",
+      apiBaseUrl: "https://api.example.com",
+    });
+
+    await expect(api.getPublicInstitutionVerificationByToken("missing-token")).resolves.toEqual({
+      token: "missing-token",
+      state: "invalid",
+      expiresAt: null,
+    });
+  });
+
+  it("recovers a duplicate confirm mutation into the canonical completed state", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Already completed" } }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: "token_123",
+            state: "completed",
+            expires_at: "2026-08-26T18:00:00Z",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = await importApiModule({
+      demoMode: "false",
+      apiBaseUrl: "https://api.example.com",
+    });
+
+    await expect(
+      api.confirmPublicInstitutionVerification("token_123", {
+        note: "Matches institution record",
+      }),
+    ).resolves.toMatchObject({
+      state: "completed",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.example.com/api/v1/public/institution-verifications/token_123/confirm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ note: "Matches institution record" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.example.com/api/v1/public/institution-verifications/token_123",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
+  it("posts discrepancy and clarification payloads to the public backend contract", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: "token_123", state: "completed" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: "token_456", state: "completed" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = await importApiModule({
+      demoMode: "false",
+      apiBaseUrl: "https://api.example.com",
+    });
+
+    await api.reportPublicInstitutionVerificationDiscrepancy("token_123", {
+      fields: ["Degree", "Programme"],
+      explanation: "Degree title does not match the institution record.",
+    });
+    await api.requestPublicInstitutionVerificationClarification("token_456", {
+      fields: ["Supporting document"],
+      message: "Please share the official transcript.",
+      requestDocument: true,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.example.com/api/v1/public/institution-verifications/token_123/report-discrepancy",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          fields: ["Degree", "Programme"],
+          explanation: "Degree title does not match the institution record.",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.example.com/api/v1/public/institution-verifications/token_456/request-clarification",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          fields: ["Supporting document"],
+          message: "Please share the official transcript.",
+          request_document: true,
+        }),
+      }),
+    );
   });
 
   it("keeps candidate claim fields honest when the backend omits department data", async () => {

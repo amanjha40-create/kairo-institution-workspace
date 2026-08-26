@@ -490,7 +490,7 @@ export interface InstitutionPassportSummary {
 export interface MagicLinkRequest {
   token: string;
   state: "valid" | "expired" | "completed" | "revoked" | "invalid";
-  expiresAt?: string;
+  expiresAt?: string | null;
   request?: {
     reference: string;
     requestedBy: string;

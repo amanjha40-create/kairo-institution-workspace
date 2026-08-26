@@ -8,6 +8,7 @@ import {
   reportPublicInstitutionVerificationDiscrepancy,
   requestPublicInstitutionVerificationClarification,
 } from "@/lib/institution/api";
+import type { MagicLinkRequest } from "@/lib/institution/types";
 import { KairoLogo } from "@/components/institution/Logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,10 +53,16 @@ function MagicLinkPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [discrepancyOpen, setDiscrepancyOpen] = useState(false);
   const [clarifyOpen, setClarifyOpen] = useState(false);
-  const [outcome, setOutcome] = useState<null | "confirmed" | "discrepancy" | "clarification">(
-    null,
-  );
+  const [lastSubmittedAction, setLastSubmittedAction] = useState<
+    null | "confirm" | "discrepancy" | "clarification"
+  >(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const discrepancyFieldOptions = data?.request
+    ? getPublicDiscrepancyFieldOptions(data.request)
+    : [];
+  const clarificationFieldOptions = data?.request
+    ? getPublicClarificationFieldOptions(data.request)
+    : [];
 
   const respondMutation = useMutation({
     mutationFn: async (
@@ -85,16 +92,21 @@ function MagicLinkPage() {
           });
       }
     },
-    onSuccess: (nextData, payload) => {
-      queryClient.setQueryData(institutionQueryKeys.magicLink(token), nextData);
+    onMutate: () => {
       setSubmissionError(null);
-      setOutcome(
+    },
+    onSuccess: async (nextData, payload) => {
+      queryClient.setQueryData(institutionQueryKeys.magicLink(token), nextData);
+      setLastSubmittedAction(
         payload.type === "confirm"
-          ? "confirmed"
+          ? "confirm"
           : payload.type === "discrepancy"
             ? "discrepancy"
             : "clarification",
       );
+      await queryClient.invalidateQueries({
+        queryKey: institutionQueryKeys.magicLink(token),
+      });
     },
     onError: (mutationError) => {
       setSubmissionError(getInstitutionErrorMessage(mutationError));
@@ -120,10 +132,22 @@ function MagicLinkPage() {
           <ErrorState onRetry={() => refetch()} />
         ) : !data ? (
           <ErrorState onRetry={() => refetch()} />
-        ) : outcome ? (
-          <CompletionPanel outcome={outcome} />
+        ) : data.state === "valid" && !data.request ? (
+          <ServiceUnavailableState
+            title="This verification link is temporarily unavailable"
+            description="We couldn't load the verification request details from Kairo right now. Please try again."
+            action={
+              <Button variant="outline" onClick={() => refetch()}>
+                Try again
+              </Button>
+            }
+          />
         ) : data.state !== "valid" ? (
-          <StateMessage state={data.state} expiresAt={data.expiresAt} />
+          <StateMessage
+            state={data.state}
+            expiresAt={data.expiresAt}
+            lastSubmittedAction={lastSubmittedAction}
+          />
         ) : (
           <>
             <div className="mb-6 text-center">
@@ -131,7 +155,8 @@ function MagicLinkPage() {
                 Education Verification Request
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Reference {data.request!.reference} · Expires {formatDate(data.expiresAt)}
+                Reference {data.request!.reference} · Expires{" "}
+                {formatDate(data.expiresAt ?? undefined)}
               </p>
               <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-[color:var(--kairo-teal-soft)] px-3 py-1 text-xs font-medium text-[color:var(--kairo-navy-deep)]">
                 <ShieldCheck className="h-3 w-3" /> This link is unique to your institution and will
@@ -147,9 +172,15 @@ function MagicLinkPage() {
                 <Cell
                   label="Candidate consent"
                   value={
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
-                      Consent received
-                    </span>
+                    data.request!.consentReceived ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                        Consent received
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-inset ring-amber-200">
+                        Consent status unavailable
+                      </span>
+                    )
                   }
                 />
               </dl>
@@ -167,6 +198,11 @@ function MagicLinkPage() {
                 <Cell label="Graduation year" value={data.request!.candidate.graduationYear} />
                 <Cell label="Completion status" value={data.request!.candidate.completionStatus} />
               </dl>
+              {data.request!.candidate.additionalNote ? (
+                <div className="mt-3 rounded-lg bg-secondary/60 p-3 text-sm text-muted-foreground">
+                  {data.request!.candidate.additionalNote}
+                </div>
+              ) : null}
             </Section>
 
             {data.request!.evidence.length > 0 && (
@@ -178,12 +214,27 @@ function MagicLinkPage() {
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <div>
                           <div className="font-medium">{f.name}</div>
-                          <div className="text-xs text-muted-foreground">{f.type}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {f.type} · Uploaded by {f.uploadedBy} · {formatDate(f.uploadedAt)}
+                          </div>
+                          {!f.url ? (
+                            <div className="text-xs text-amber-800">
+                              View link unavailable for this file.
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                      <Button size="sm" variant="outline" disabled>
-                        View
-                      </Button>
+                      {f.url ? (
+                        <Button asChild size="sm" variant="outline">
+                          <a href={f.url} target="_blank" rel="noreferrer">
+                            View
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" disabled>
+                          View unavailable
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -232,6 +283,7 @@ function MagicLinkPage() {
             <DiscrepancyDialog
               open={discrepancyOpen}
               submitting={respondMutation.isPending}
+              fieldOptions={discrepancyFieldOptions}
               onOpenChange={setDiscrepancyOpen}
               onSubmit={async (fields, explanation) => {
                 await respondMutation.mutateAsync({
@@ -245,6 +297,7 @@ function MagicLinkPage() {
             <ClarificationDialog
               open={clarifyOpen}
               submitting={respondMutation.isPending}
+              fieldOptions={clarificationFieldOptions}
               onOpenChange={setClarifyOpen}
               onSubmit={async (fields, message, requestDocument) => {
                 await respondMutation.mutateAsync({
@@ -263,54 +316,40 @@ function MagicLinkPage() {
   );
 }
 
-function CompletionPanel({ outcome }: { outcome: "confirmed" | "discrepancy" | "clarification" }) {
-  const labels = {
-    confirmed: "Verification response submitted",
-    discrepancy: "Discrepancy reported",
-    clarification: "Clarification request sent",
-  };
-  return (
-    <div className="rounded-2xl border border-border bg-white p-8 text-center shadow-sm">
-      <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-[color:var(--kairo-teal-soft)]">
-        <Check className="h-5 w-5 text-[color:var(--kairo-navy-deep)]" />
-      </div>
-      <h2 className="text-lg font-semibold">{labels[outcome]}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Thank you. Your response has been securely recorded and shared with the authorized parties.
-      </p>
-      <div className="mt-5 flex justify-center gap-2">
-        <Button onClick={() => window.close()}>Finish</Button>
-        <Button asChild variant="outline">
-          <a href="/institution?source=verification-complete">See how Kairo helps institutions</a>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function StateMessage({
   state,
   expiresAt,
+  lastSubmittedAction,
 }: {
   state: "expired" | "completed" | "revoked" | "invalid" | "valid";
-  expiresAt?: string;
+  expiresAt?: string | null;
+  lastSubmittedAction?: "confirm" | "discrepancy" | "clarification" | null;
 }) {
   const map = {
     expired: {
-      title: "This link has expired",
-      body: `The verification link expired on ${formatDate(expiresAt)}. Please contact the requesting organization for a new link.`,
+      title: "This verification link has expired",
+      body: expiresAt
+        ? `This secure link expired on ${formatDate(expiresAt)}. Please request a new verification link if you still need to respond.`
+        : "This secure verification link has expired. Please request a new link if you still need to respond.",
     },
     completed: {
-      title: "This request has already been completed",
-      body: "A response has already been submitted for this verification request.",
+      title: "Verification response already submitted",
+      body:
+        lastSubmittedAction === "confirm"
+          ? "The education claim has been confirmed and this secure link is now complete."
+          : lastSubmittedAction === "discrepancy"
+            ? "Your discrepancy report has been recorded and this secure link is now complete."
+            : lastSubmittedAction === "clarification"
+              ? "Your clarification request has been recorded and this secure link is now complete."
+              : "A response has already been submitted for this verification request.",
     },
     revoked: {
-      title: "This link has been revoked",
-      body: "The requester has revoked this verification link. Please contact them if you have questions.",
+      title: "This verification link is no longer active",
+      body: "This secure link has been revoked and cannot be used. Please contact the requester if you still need to respond.",
     },
     invalid: {
-      title: "Invalid verification link",
-      body: "We could not find a verification request for this link. Please check the URL or contact the requester.",
+      title: "This verification link is invalid or unavailable",
+      body: "We couldn't open a verification request from this link. Please check that you used the full secure URL or request a new one.",
     },
     valid: { title: "", body: "" },
   }[state];
@@ -340,4 +379,53 @@ function Cell({ label, value }: { label: string; value: React.ReactNode }) {
       <div className="text-sm text-foreground">{value}</div>
     </div>
   );
+}
+
+function getPublicDiscrepancyFieldOptions(request: NonNullable<MagicLinkRequest["request"]>) {
+  return buildPublicFieldOptions(request, {
+    includeInstitution: true,
+    includeRecordNotFound: true,
+    includeOther: true,
+  });
+}
+
+function getPublicClarificationFieldOptions(request: NonNullable<MagicLinkRequest["request"]>) {
+  return buildPublicFieldOptions(request, {
+    includeSupportingDocument: request.evidence.length > 0,
+  });
+}
+
+function buildPublicFieldOptions(
+  request: NonNullable<MagicLinkRequest["request"]>,
+  options: {
+    includeInstitution?: boolean;
+    includeRecordNotFound?: boolean;
+    includeOther?: boolean;
+    includeSupportingDocument?: boolean;
+  },
+) {
+  const entries: Array<[boolean, string]> = [
+    [Boolean(request.candidate.studentId), "Student ID"],
+    [Boolean(options.includeInstitution), "Institution"],
+    [Boolean(request.candidate.degree && request.candidate.degree !== "—"), "Degree"],
+    [Boolean(request.candidate.programme && request.candidate.programme !== "—"), "Programme"],
+    [Boolean(request.candidate.department && request.candidate.department !== "—"), "Department"],
+    [
+      Boolean(request.candidate.admissionYear && request.candidate.admissionYear !== "—"),
+      "Admission year",
+    ],
+    [
+      Boolean(request.candidate.graduationYear && request.candidate.graduationYear !== "—"),
+      "Graduation year",
+    ],
+    [
+      Boolean(request.candidate.completionStatus && request.candidate.completionStatus !== "—"),
+      "Completion status",
+    ],
+    [Boolean(options.includeSupportingDocument), "Supporting document"],
+    [Boolean(options.includeRecordNotFound), "Record not found"],
+    [Boolean(options.includeOther), "Other"],
+  ];
+
+  return entries.filter(([include]) => include).map(([, label]) => label);
 }

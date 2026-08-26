@@ -95,11 +95,13 @@ export function ConfirmDialog({
 export function DiscrepancyDialog({
   open,
   submitting = false,
+  fieldOptions = DISCREPANCY_FIELDS,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean;
   submitting?: boolean;
+  fieldOptions?: string[];
   onOpenChange: (v: boolean) => void;
   onSubmit: (fields: string[], explanation: string) => void;
 }) {
@@ -117,7 +119,7 @@ export function DiscrepancyDialog({
           <div>
             <Label className="text-xs">Which fields differ?</Label>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {DISCREPANCY_FIELDS.map((f) => (
+              {fieldOptions.map((f) => (
                 <label key={f} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={fields.includes(f)} onCheckedChange={() => toggle(f)} />
                   <span>{f}</span>
@@ -154,11 +156,13 @@ export function DiscrepancyDialog({
 export function ClarificationDialog({
   open,
   submitting = false,
+  fieldOptions = CLARIFICATION_FIELDS,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean;
   submitting?: boolean;
+  fieldOptions?: string[];
   onOpenChange: (v: boolean) => void;
   onSubmit: (fields: string[], message: string, requestDocument: boolean) => void;
 }) {
@@ -177,7 +181,7 @@ export function ClarificationDialog({
           <div>
             <Label className="text-xs">What information is missing?</Label>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {CLARIFICATION_FIELDS.map((f) => (
+              {fieldOptions.map((f) => (
                 <label key={f} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={fields.includes(f)} onCheckedChange={() => toggle(f)} />
                   <span>{f}</span>

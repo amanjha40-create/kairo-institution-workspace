@@ -4,6 +4,7 @@ import {
   cancelInstitutionVerificationRequest,
   cancelInstitutionOrganizationInvitation,
   changeInstitutionPassword as changeInstitutionUserPassword,
+  confirmPublicInstitutionVerificationByToken,
   createInstitutionOrganizationInvitation,
   getInstitutionAccountSessions,
   getInstitutionAccountSettings,
@@ -17,6 +18,7 @@ import {
   getInstitutionOrganizationPersonVerificationHistory,
   getInstitutionOrganizationVerificationRequests as fetchInstitutionOrganizationVerificationRequests,
   getInstitutionOrganizationTeam,
+  getPublicInstitutionVerification,
   getInstitutionVerificationEvidence,
   getInstitutionVerificationRequestDetail,
   getInstitutionVerificationTimeline,
@@ -24,6 +26,7 @@ import {
   markInstitutionNotificationRead as markInstitutionNotificationReadInBackend,
   removeInstitutionOrganizationMember,
   rejectInstitutionVerificationRequest,
+  reportPublicInstitutionVerificationDiscrepancyByToken,
   revokeAllInstitutionAccountSessions,
   revokeInstitutionAccountSession,
   resendInstitutionOrganizationInvitation,
@@ -38,6 +41,7 @@ import {
   updateInstitutionOrganizationMemberRole,
   verifyInstitutionVerificationRequest,
   requestInstitutionVerificationInformation,
+  requestPublicInstitutionVerificationClarificationByToken,
 } from "./backend";
 import {
   apiNotConfiguredError,
@@ -1185,19 +1189,19 @@ function demoPublicVerificationRepository(): PublicVerificationRepository {
   };
 }
 
-function unavailablePublicVerificationRepository(): PublicVerificationRepository {
+function backendPublicVerificationRepository(): PublicVerificationRepository {
   return {
-    async getByToken() {
-      assertInstitutionBackend("Magic-link verification");
+    async getByToken(token) {
+      return getPublicInstitutionVerification(token);
     },
-    async confirm() {
-      assertInstitutionBackend("Magic-link verification");
+    async confirm(token, note) {
+      return confirmPublicInstitutionVerificationByToken(token, { note });
     },
-    async reportDiscrepancy() {
-      assertInstitutionBackend("Magic-link verification");
+    async reportDiscrepancy(token, payload) {
+      return reportPublicInstitutionVerificationDiscrepancyByToken(token, payload);
     },
-    async requestClarification() {
-      assertInstitutionBackend("Magic-link verification");
+    async requestClarification(token, payload) {
+      return requestPublicInstitutionVerificationClarificationByToken(token, payload);
     },
   };
 }
@@ -1207,7 +1211,7 @@ const institutionRepository = institutionAppConfig.demoMode
   : backendInstitutionRepository();
 const publicVerificationRepository = institutionAppConfig.demoMode
   ? demoPublicVerificationRepository()
-  : unavailablePublicVerificationRepository();
+  : backendPublicVerificationRepository();
 
 export async function getInstitutionDashboard(
   organizationId: string,
@@ -1418,7 +1422,6 @@ export async function confirmPublicInstitutionVerification(
   token: string,
   payload: { note?: string },
 ): Promise<MagicLinkRequest> {
-  assertDemoMode("Magic-link verification");
   return publicVerificationRepository.confirm(token, payload.note);
 }
 
@@ -1426,7 +1429,6 @@ export async function reportPublicInstitutionVerificationDiscrepancy(
   token: string,
   payload: { fields: string[]; explanation: string },
 ): Promise<MagicLinkRequest> {
-  assertDemoMode("Magic-link verification");
   return publicVerificationRepository.reportDiscrepancy(token, payload);
 }
 
@@ -1434,7 +1436,6 @@ export async function requestPublicInstitutionVerificationClarification(
   token: string,
   payload: { fields: string[]; message: string; requestDocument?: boolean },
 ): Promise<MagicLinkRequest> {
-  assertDemoMode("Magic-link verification");
   return publicVerificationRepository.requestClarification(token, payload);
 }
 

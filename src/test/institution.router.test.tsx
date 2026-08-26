@@ -113,6 +113,37 @@ describe("institution routing and permissions", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
+  it("renders a valid public verification link without redirecting to institution sign in", async () => {
+    await renderRoute("/institution/verify/valid-token", {
+      session: null,
+      authenticated: false,
+      demoMode: "true",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Education Verification Request" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Consent received")).toBeInTheDocument();
+    expect(screen.getByText("Degree_Certificate.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("shows a terminal public verification state without requiring workspace authentication", async () => {
+    await renderRoute("/institution/verify/completed-token", {
+      session: null,
+      authenticated: false,
+      demoMode: "true",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Verification response already submitted" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
   it("redirects authenticated users without an active institution to onboarding", async () => {
     await renderRoute("/institution/verifications", {
       session: null,

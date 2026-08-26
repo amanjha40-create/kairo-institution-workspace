@@ -20,6 +20,7 @@ import type {
   InstitutionVerificationInbox,
   InternalNote,
   InstitutionWorkspaceBootstrap,
+  MagicLinkRequest,
   Person,
   TimelineEvent,
   TeamInvitation,
@@ -335,6 +336,45 @@ interface BackendVerificationTimelineEventResponse {
 interface BackendVerificationTimelineResponse {
   verification_request_public_id: string;
   items: BackendVerificationTimelineEventResponse[];
+}
+
+interface BackendPublicInstitutionVerificationCandidateClaimResponse {
+  candidate_name: string;
+  student_id: string | null;
+  institution_name: string;
+  degree: string;
+  programme: string;
+  department: string;
+  admission_year: string;
+  graduation_year: string;
+  completion_status: string;
+  additional_note: string | null;
+}
+
+interface BackendPublicInstitutionVerificationEvidenceFileResponse {
+  id: string;
+  name: string;
+  type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  url: string | null;
+}
+
+interface BackendPublicInstitutionVerificationRequestProjectionResponse {
+  reference: string;
+  requested_by: string;
+  purpose: string;
+  request_date: string;
+  consent_received: boolean;
+  candidate: BackendPublicInstitutionVerificationCandidateClaimResponse;
+  evidence?: BackendPublicInstitutionVerificationEvidenceFileResponse[] | null;
+}
+
+interface BackendPublicInstitutionVerificationReadResponse {
+  token: string;
+  state: MagicLinkRequest["state"];
+  expires_at: string | null;
+  request?: BackendPublicInstitutionVerificationRequestProjectionResponse | null;
 }
 
 interface BackendPageResponse<T> {
@@ -1277,6 +1317,71 @@ function mapVerificationTimelineEvent(
     label: formatVerificationTimelineLabel(payload.event_type),
     detail: metadataDetail,
   };
+}
+
+function mapPublicInstitutionVerificationEvidence(
+  payload: BackendPublicInstitutionVerificationEvidenceFileResponse,
+) {
+  return {
+    id: payload.id,
+    name: payload.name,
+    type: payload.type,
+    uploadedBy: payload.uploaded_by,
+    uploadedAt: payload.uploaded_at,
+    url: payload.url || undefined,
+  };
+}
+
+function mapPublicInstitutionVerification(
+  payload: BackendPublicInstitutionVerificationReadResponse,
+): MagicLinkRequest {
+  return {
+    token: payload.token,
+    state: payload.state,
+    expiresAt: payload.expires_at,
+    request: payload.request
+      ? {
+          reference: payload.request.reference,
+          requestedBy: payload.request.requested_by,
+          purpose: payload.request.purpose,
+          requestDate: payload.request.request_date,
+          consentReceived: payload.request.consent_received,
+          candidate: {
+            candidateName: payload.request.candidate.candidate_name,
+            studentId: payload.request.candidate.student_id || undefined,
+            institutionName: payload.request.candidate.institution_name,
+            degree: payload.request.candidate.degree,
+            programme: payload.request.candidate.programme,
+            department: payload.request.candidate.department,
+            admissionYear: payload.request.candidate.admission_year,
+            graduationYear: payload.request.candidate.graduation_year,
+            completionStatus: payload.request.candidate.completion_status,
+            additionalNote: payload.request.candidate.additional_note || undefined,
+          },
+          evidence: (payload.request.evidence ?? []).map(mapPublicInstitutionVerificationEvidence),
+        }
+      : undefined,
+  };
+}
+
+function isPublicVerificationInvalidStateError(error: unknown) {
+  return error instanceof InstitutionError && [401, 403, 404].includes(error.status);
+}
+
+async function recoverPublicInstitutionVerificationState(token: string) {
+  try {
+    return await getPublicInstitutionVerification(token);
+  } catch (error) {
+    if (isPublicVerificationInvalidStateError(error)) {
+      return {
+        token,
+        state: "invalid" as const,
+        expiresAt: null,
+      };
+    }
+
+    throw error;
+  }
 }
 
 function mapInternalNote(payload: BackendVerificationRequestResponse): InternalNote[] {
@@ -2452,6 +2557,108 @@ export async function getInstitutionVerificationTimeline(
 
     return normalizeTimelinePayload(payload).map(mapVerificationTimelineEvent);
   });
+}
+
+export async function getPublicInstitutionVerification(token: string) {
+  try {
+    const payload = await apiRequest<BackendPublicInstitutionVerificationReadResponse>(
+      `/api/v1/public/institution-verifications/${encodeURIComponent(token)}`,
+      {
+        method: "GET",
+        unauthorizedUiMessage: "This verification link is invalid or unavailable.",
+      },
+    );
+
+    return mapPublicInstitutionVerification(payload);
+  } catch (error) {
+    if (isPublicVerificationInvalidStateError(error)) {
+      return {
+        token,
+        state: "invalid" as const,
+        expiresAt: null,
+      };
+    }
+
+    throw error;
+  }
+}
+
+export async function confirmPublicInstitutionVerificationByToken(
+  token: string,
+  payload: { note?: string },
+) {
+  try {
+    const response = await apiRequest<BackendPublicInstitutionVerificationReadResponse>(
+      `/api/v1/public/institution-verifications/${encodeURIComponent(token)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          note: payload.note?.trim() ? payload.note.trim() : null,
+        }),
+      },
+    );
+
+    return mapPublicInstitutionVerification(response);
+  } catch (error) {
+    if (error instanceof InstitutionError && error.status === 409) {
+      return recoverPublicInstitutionVerificationState(token);
+    }
+
+    throw error;
+  }
+}
+
+export async function reportPublicInstitutionVerificationDiscrepancyByToken(
+  token: string,
+  payload: { fields: string[]; explanation: string },
+) {
+  try {
+    const response = await apiRequest<BackendPublicInstitutionVerificationReadResponse>(
+      `/api/v1/public/institution-verifications/${encodeURIComponent(token)}/report-discrepancy`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          fields: payload.fields,
+          explanation: payload.explanation.trim(),
+        }),
+      },
+    );
+
+    return mapPublicInstitutionVerification(response);
+  } catch (error) {
+    if (error instanceof InstitutionError && error.status === 409) {
+      return recoverPublicInstitutionVerificationState(token);
+    }
+
+    throw error;
+  }
+}
+
+export async function requestPublicInstitutionVerificationClarificationByToken(
+  token: string,
+  payload: { fields: string[]; message: string; requestDocument?: boolean },
+) {
+  try {
+    const response = await apiRequest<BackendPublicInstitutionVerificationReadResponse>(
+      `/api/v1/public/institution-verifications/${encodeURIComponent(token)}/request-clarification`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          fields: payload.fields,
+          message: payload.message.trim(),
+          request_document: Boolean(payload.requestDocument),
+        }),
+      },
+    );
+
+    return mapPublicInstitutionVerification(response);
+  } catch (error) {
+    if (error instanceof InstitutionError && error.status === 409) {
+      return recoverPublicInstitutionVerificationState(token);
+    }
+
+    throw error;
+  }
 }
 
 export async function assignInstitutionVerificationReviewer(
