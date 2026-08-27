@@ -9,6 +9,128 @@ async function importSignupModule(demoMode: "true" | "false") {
 }
 
 describe("institution signup storage", () => {
+  it("maps the selected production institution type to the canonical backend organization type", async () => {
+    const completeInstitutionWorkspaceOnboarding = vi.fn().mockResolvedValue({
+      publicId: "org_001",
+      name: "Founder University",
+    });
+    const getStoredInstitutionAuthTokens = vi.fn().mockReturnValue({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    vi.doMock("@/lib/institution/backend", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/institution/backend")>(
+        "@/lib/institution/backend",
+      );
+
+      return {
+        ...actual,
+        getStoredInstitutionAuthTokens,
+        completeInstitutionWorkspaceOnboarding,
+      };
+    });
+
+    const signup = await import("@/lib/institution/signup");
+
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionDetails({
+      name: "Founder University",
+      type: "University",
+      website: "https://institution.example",
+      domain: "institution.example",
+      country: "India",
+      city: "Delhi",
+      verificationEmail: "verification@institution.example",
+    });
+    signup.updateInstitutionAdministrator({
+      fullName: "Aman Jha",
+      jobTitle: "Founder",
+      workEmail: "aman@institution.example",
+      authorized: true,
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+    signup.updateInstitutionVerification({
+      method: "email",
+      emailStatus: "verified",
+    });
+
+    await signup.submitInstitutionWorkspaceApplication();
+
+    expect(completeInstitutionWorkspaceOnboarding).toHaveBeenCalledWith(
+      "access_token_123",
+      expect.objectContaining({
+        name: "Founder University",
+        organizationType: "university",
+      }),
+    );
+  });
+
+  it("rejects unsupported institution types before sending the production onboarding payload", async () => {
+    const completeInstitutionWorkspaceOnboarding = vi.fn();
+    const getStoredInstitutionAuthTokens = vi.fn().mockReturnValue({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    vi.doMock("@/lib/institution/backend", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/institution/backend")>(
+        "@/lib/institution/backend",
+      );
+
+      return {
+        ...actual,
+        getStoredInstitutionAuthTokens,
+        completeInstitutionWorkspaceOnboarding,
+      };
+    });
+
+    const signup = await import("@/lib/institution/signup");
+
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionDetails({
+      name: "Founder College",
+      type: "College",
+      website: "https://institution.example",
+      domain: "institution.example",
+      country: "India",
+      city: "Delhi",
+      verificationEmail: "verification@institution.example",
+    });
+    signup.updateInstitutionAdministrator({
+      fullName: "Aman Jha",
+      jobTitle: "Founder",
+      workEmail: "aman@institution.example",
+      authorized: true,
+      password: "super-secret-password",
+      confirmPassword: "super-secret-password",
+    });
+    signup.updateInstitutionVerification({
+      method: "email",
+      emailStatus: "verified",
+    });
+
+    await expect(signup.submitInstitutionWorkspaceApplication()).rejects.toMatchObject({
+      uiMessage: "Institution onboarding currently supports university workspaces only.",
+    });
+    expect(completeInstitutionWorkspaceOnboarding).not.toHaveBeenCalled();
+  });
+
   it("never persists passwords in the signup draft", async () => {
     const signup = await importSignupModule("true");
 

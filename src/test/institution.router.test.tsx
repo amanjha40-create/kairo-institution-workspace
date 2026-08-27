@@ -113,6 +113,24 @@ describe("institution routing and permissions", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
+  it("keeps production onboarding type selection truthful and placeholders generic", async () => {
+    await renderRoute("/institution/signup/institution", {
+      session: null,
+      authenticated: false,
+      demoMode: "false",
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Tell us about your institution" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "University" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "College" })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("northbridge.edu")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("verify@northbridge.edu")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("institution.edu")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("verification@institution.edu")).toBeInTheDocument();
+  });
+
   it("renders password reset completion from the reset token query", async () => {
     await renderRoute("/institution/login?reset_token=reset_token_123", {
       session: null,

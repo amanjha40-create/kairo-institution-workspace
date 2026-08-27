@@ -9,6 +9,7 @@ import {
   createInstitutionSignupDraft,
   getInstitutionSignupDraft,
   isPersonalEmailDomain,
+  SUPPORTED_INSTITUTION_TYPE_OPTIONS,
   updateInstitutionDetails,
   type InstitutionDetails,
   type InstitutionType,
@@ -30,18 +31,11 @@ export const Route = createFileRoute("/institution/signup/institution")({
   component: InstitutionStep,
 });
 
-const INSTITUTION_TYPES: InstitutionType[] = [
-  "University",
-  "College",
-  "School",
-  "Training Institute",
-  "Certification Body",
-  "Other Educational Institution",
-];
-
 const schema = z.object({
   name: z.string().trim().min(2, "Institution name is required").max(200),
-  type: z.string().min(1, "Select an institution type"),
+  type: z.literal("University", {
+    errorMap: () => ({ message: "University is the currently supported institution type" }),
+  }),
   website: z.string().trim().url("Enter a valid website URL").max(300),
   domain: z.string().trim().min(3, "Enter your institution domain").max(200),
   country: z.string().trim().min(2, "Country is required").max(100),
@@ -65,7 +59,13 @@ function InstitutionStep() {
 
   useEffect(() => {
     const draft = getInstitutionSignupDraft() ?? createInstitutionSignupDraft();
-    setForm(draft.institution);
+    setForm({
+      ...draft.institution,
+      type:
+        draft.institution.type === SUPPORTED_INSTITUTION_TYPE_OPTIONS[0].value
+          ? draft.institution.type
+          : "",
+    });
   }, []);
 
   const update = <K extends keyof InstitutionDetails>(key: K, value: InstitutionDetails[K]) => {
@@ -118,12 +118,16 @@ function InstitutionStep() {
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">Select a type…</option>
-              {INSTITUTION_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {SUPPORTED_INSTITUTION_TYPE_OPTIONS.map((option) => (
+                <option key={option.organizationType} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Institution Workspace onboarding currently supports University organizations in
+              production.
+            </p>
           </Field>
           <Field label="Official website" error={errors.website}>
             <Input
@@ -134,7 +138,7 @@ function InstitutionStep() {
           </Field>
           <Field label="Official domain" error={errors.domain}>
             <Input
-              placeholder="northbridge.edu"
+              placeholder="institution.edu"
               value={form.domain}
               onChange={(e) => update("domain", e.target.value)}
             />
@@ -149,7 +153,7 @@ function InstitutionStep() {
         <Field label="Primary verification email" error={errors.verificationEmail}>
           <Input
             type="email"
-            placeholder="verify@northbridge.edu"
+            placeholder="verification@institution.edu"
             value={form.verificationEmail}
             onChange={(e) => update("verificationEmail", e.target.value)}
           />

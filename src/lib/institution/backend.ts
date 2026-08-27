@@ -574,6 +574,7 @@ export interface OrganizationSignupEmailVerifyResult {
 
 export interface InstitutionOnboardingPayload {
   name: string;
+  organizationType: "university";
   website?: string;
   location?: string;
   workEmail?: string;
@@ -2077,7 +2078,7 @@ export async function completeInstitutionWorkspaceOnboarding(
       method: "POST",
       body: JSON.stringify({
         name: payload.name,
-        organization_type: "university",
+        organization_type: payload.organizationType,
         website: payload.website || null,
         location: payload.location || null,
         work_email: payload.workEmail || null,

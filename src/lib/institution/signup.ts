@@ -20,6 +20,14 @@ export type InstitutionType =
   | "Certification Body"
   | "Other Educational Institution";
 
+export const SUPPORTED_INSTITUTION_TYPE_OPTIONS = [
+  {
+    label: "University",
+    value: "University",
+    organizationType: "university",
+  },
+] as const;
+
 export type VerificationMethod = "email" | "domain" | "manual";
 
 export type EmailVerificationStatus = "not_started" | "code_sent" | "verified" | "failed";
@@ -150,6 +158,15 @@ export function isPersonalEmailDomain(email: string): boolean {
 
 export function extractDomain(email: string): string {
   return email.trim().toLowerCase().split("@")[1] ?? "";
+}
+
+export function mapInstitutionTypeToOrganizationType(type: InstitutionType | ""): "university" {
+  const match = SUPPORTED_INSTITUTION_TYPE_OPTIONS.find((option) => option.value === type);
+  if (!match) {
+    throw validationError("Institution onboarding currently supports university workspaces only.");
+  }
+
+  return match.organizationType;
 }
 
 function emptyDraft(): InstitutionSignupDraft {
@@ -735,6 +752,7 @@ export async function submitInstitutionWorkspaceApplication(): Promise<Workspace
   const accessToken = await resolveAccessTokenForOnboarding(draft);
   await completeInstitutionWorkspaceOnboarding(accessToken, {
     name: draft.institution.name,
+    organizationType: mapInstitutionTypeToOrganizationType(draft.institution.type),
     website: draft.institution.website || undefined,
     location:
       [draft.institution.city, draft.institution.country].filter(Boolean).join(", ") || undefined,
