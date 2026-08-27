@@ -113,6 +113,23 @@ describe("institution routing and permissions", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
+  it("renders password reset completion from the reset token query", async () => {
+    await renderRoute("/institution/login?reset_token=reset_token_123", {
+      session: null,
+      authenticated: false,
+      demoMode: "false",
+    });
+
+    expect(await screen.findByRole("heading", { name: "Reset password" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Choose a new password to finish resetting your Institution Workspace account.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update password" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
   it("renders a valid public verification link without redirecting to institution sign in", async () => {
     await renderRoute("/institution/verify/valid-token", {
       session: null,

@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -55,6 +56,9 @@ export function ConfirmDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Confirm education record</DialogTitle>
+          <DialogDescription>
+            Confirm only when the candidate-submitted claim matches the institution's records.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="rounded-md border border-border bg-secondary/60 p-3 text-xs">
@@ -114,6 +118,10 @@ export function DiscrepancyDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Report discrepancy</DialogTitle>
+          <DialogDescription>
+            Record only factual differences between the candidate-submitted claim and the
+            institution's records.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div>
@@ -176,6 +184,9 @@ export function ClarificationDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Request clarification</DialogTitle>
+          <DialogDescription>
+            Request the missing information needed before the institution can complete its review.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div>
