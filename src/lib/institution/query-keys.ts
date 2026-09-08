@@ -29,6 +29,29 @@ export const institutionQueryKeys = {
     organizationId?: string,
     filters?: Record<string, string | number | boolean | undefined>,
   ) => ["institution", "people", organizationId ?? "none", filters ?? {}] as const,
+  studentRoster: (
+    organizationId?: string,
+    filters?: Record<string, string | number | boolean | undefined>,
+  ) => ["institution", "student-roster", organizationId ?? "none", filters ?? {}] as const,
+  studentRosterImports: (
+    organizationId?: string,
+    filters?: Record<string, string | number | boolean | undefined>,
+  ) => ["institution", "student-roster-imports", organizationId ?? "none", filters ?? {}] as const,
+  studentRosterImport: (organizationId: string | undefined, importId: string) =>
+    ["institution", "student-roster-import", organizationId ?? "none", importId] as const,
+  studentRosterImportRows: (
+    organizationId: string | undefined,
+    importId: string,
+    filters?: Record<string, string | number | undefined>,
+  ) =>
+    [
+      "institution",
+      "student-roster-import",
+      organizationId ?? "none",
+      importId,
+      "rows",
+      filters ?? {},
+    ] as const,
   person: (organizationId: string | undefined, personId: string) =>
     ["institution", "person", organizationId ?? "none", personId] as const,
   personVerificationHistory: (organizationId: string | undefined, personId: string) =>

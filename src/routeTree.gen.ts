@@ -26,7 +26,12 @@ import { Route as InstitutionSignupSuccessRouteImport } from './routes/instituti
 import { Route as InstitutionSignupReviewRouteImport } from './routes/institution.signup.review'
 import { Route as InstitutionSignupInstitutionRouteImport } from './routes/institution.signup.institution'
 import { Route as InstitutionSignupAdminRouteImport } from './routes/institution.signup.admin'
+import { Route as InstitutionPeopleStudentsRouteImport } from './routes/institution.people.students'
 import { Route as InstitutionPeoplePersonIdRouteImport } from './routes/institution.people.$personId'
+import { Route as InstitutionPeopleStudentsIndexRouteImport } from './routes/institution.people.students.index'
+import { Route as InstitutionPeopleStudentsImportIndexRouteImport } from './routes/institution.people.students.import.index'
+import { Route as InstitutionPeopleStudentsImportHistoryRouteImport } from './routes/institution.people.students.import.history'
+import { Route as InstitutionPeopleStudentsImportImportIdRouteImport } from './routes/institution.people.students.import.$importId'
 
 const InstitutionRoute = InstitutionRouteImport.update({
   id: '/institution',
@@ -118,11 +123,41 @@ const InstitutionSignupAdminRoute = InstitutionSignupAdminRouteImport.update({
   path: '/signup/admin',
   getParentRoute: () => InstitutionRoute,
 } as any)
+const InstitutionPeopleStudentsRoute =
+  InstitutionPeopleStudentsRouteImport.update({
+    id: '/people/students',
+    path: '/people/students',
+    getParentRoute: () => InstitutionRoute,
+  } as any)
 const InstitutionPeoplePersonIdRoute =
   InstitutionPeoplePersonIdRouteImport.update({
     id: '/people/$personId',
     path: '/people/$personId',
     getParentRoute: () => InstitutionRoute,
+  } as any)
+const InstitutionPeopleStudentsIndexRoute =
+  InstitutionPeopleStudentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => InstitutionPeopleStudentsRoute,
+  } as any)
+const InstitutionPeopleStudentsImportIndexRoute =
+  InstitutionPeopleStudentsImportIndexRouteImport.update({
+    id: '/import/',
+    path: '/import/',
+    getParentRoute: () => InstitutionPeopleStudentsRoute,
+  } as any)
+const InstitutionPeopleStudentsImportHistoryRoute =
+  InstitutionPeopleStudentsImportHistoryRouteImport.update({
+    id: '/import/history',
+    path: '/import/history',
+    getParentRoute: () => InstitutionPeopleStudentsRoute,
+  } as any)
+const InstitutionPeopleStudentsImportImportIdRoute =
+  InstitutionPeopleStudentsImportImportIdRouteImport.update({
+    id: '/import/$importId',
+    path: '/import/$importId',
+    getParentRoute: () => InstitutionPeopleStudentsRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -134,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/institution/team': typeof InstitutionTeamRoute
   '/institution/': typeof InstitutionIndexRoute
   '/institution/people/$personId': typeof InstitutionPeoplePersonIdRoute
+  '/institution/people/students': typeof InstitutionPeopleStudentsRouteWithChildren
   '/institution/signup/admin': typeof InstitutionSignupAdminRoute
   '/institution/signup/institution': typeof InstitutionSignupInstitutionRoute
   '/institution/signup/review': typeof InstitutionSignupReviewRoute
@@ -144,6 +180,10 @@ export interface FileRoutesByFullPath {
   '/institution/people/': typeof InstitutionPeopleIndexRoute
   '/institution/signup/': typeof InstitutionSignupIndexRoute
   '/institution/verifications/': typeof InstitutionVerificationsIndexRoute
+  '/institution/people/students/': typeof InstitutionPeopleStudentsIndexRoute
+  '/institution/people/students/import/$importId': typeof InstitutionPeopleStudentsImportImportIdRoute
+  '/institution/people/students/import/history': typeof InstitutionPeopleStudentsImportHistoryRoute
+  '/institution/people/students/import/': typeof InstitutionPeopleStudentsImportIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -163,6 +203,10 @@ export interface FileRoutesByTo {
   '/institution/people': typeof InstitutionPeopleIndexRoute
   '/institution/signup': typeof InstitutionSignupIndexRoute
   '/institution/verifications': typeof InstitutionVerificationsIndexRoute
+  '/institution/people/students': typeof InstitutionPeopleStudentsIndexRoute
+  '/institution/people/students/import/$importId': typeof InstitutionPeopleStudentsImportImportIdRoute
+  '/institution/people/students/import/history': typeof InstitutionPeopleStudentsImportHistoryRoute
+  '/institution/people/students/import': typeof InstitutionPeopleStudentsImportIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -174,6 +218,7 @@ export interface FileRoutesById {
   '/institution/team': typeof InstitutionTeamRoute
   '/institution/': typeof InstitutionIndexRoute
   '/institution/people/$personId': typeof InstitutionPeoplePersonIdRoute
+  '/institution/people/students': typeof InstitutionPeopleStudentsRouteWithChildren
   '/institution/signup/admin': typeof InstitutionSignupAdminRoute
   '/institution/signup/institution': typeof InstitutionSignupInstitutionRoute
   '/institution/signup/review': typeof InstitutionSignupReviewRoute
@@ -184,6 +229,10 @@ export interface FileRoutesById {
   '/institution/people/': typeof InstitutionPeopleIndexRoute
   '/institution/signup/': typeof InstitutionSignupIndexRoute
   '/institution/verifications/': typeof InstitutionVerificationsIndexRoute
+  '/institution/people/students/': typeof InstitutionPeopleStudentsIndexRoute
+  '/institution/people/students/import/$importId': typeof InstitutionPeopleStudentsImportImportIdRoute
+  '/institution/people/students/import/history': typeof InstitutionPeopleStudentsImportHistoryRoute
+  '/institution/people/students/import/': typeof InstitutionPeopleStudentsImportIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -196,6 +245,7 @@ export interface FileRouteTypes {
     | '/institution/team'
     | '/institution/'
     | '/institution/people/$personId'
+    | '/institution/people/students'
     | '/institution/signup/admin'
     | '/institution/signup/institution'
     | '/institution/signup/review'
@@ -206,6 +256,10 @@ export interface FileRouteTypes {
     | '/institution/people/'
     | '/institution/signup/'
     | '/institution/verifications/'
+    | '/institution/people/students/'
+    | '/institution/people/students/import/$importId'
+    | '/institution/people/students/import/history'
+    | '/institution/people/students/import/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -225,6 +279,10 @@ export interface FileRouteTypes {
     | '/institution/people'
     | '/institution/signup'
     | '/institution/verifications'
+    | '/institution/people/students'
+    | '/institution/people/students/import/$importId'
+    | '/institution/people/students/import/history'
+    | '/institution/people/students/import'
   id:
     | '__root__'
     | '/'
@@ -235,6 +293,7 @@ export interface FileRouteTypes {
     | '/institution/team'
     | '/institution/'
     | '/institution/people/$personId'
+    | '/institution/people/students'
     | '/institution/signup/admin'
     | '/institution/signup/institution'
     | '/institution/signup/review'
@@ -245,6 +304,10 @@ export interface FileRouteTypes {
     | '/institution/people/'
     | '/institution/signup/'
     | '/institution/verifications/'
+    | '/institution/people/students/'
+    | '/institution/people/students/import/$importId'
+    | '/institution/people/students/import/history'
+    | '/institution/people/students/import/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -373,6 +436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstitutionSignupAdminRouteImport
       parentRoute: typeof InstitutionRoute
     }
+    '/institution/people/students': {
+      id: '/institution/people/students'
+      path: '/people/students'
+      fullPath: '/institution/people/students'
+      preLoaderRoute: typeof InstitutionPeopleStudentsRouteImport
+      parentRoute: typeof InstitutionRoute
+    }
     '/institution/people/$personId': {
       id: '/institution/people/$personId'
       path: '/people/$personId'
@@ -380,8 +450,59 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstitutionPeoplePersonIdRouteImport
       parentRoute: typeof InstitutionRoute
     }
+    '/institution/people/students/': {
+      id: '/institution/people/students/'
+      path: '/'
+      fullPath: '/institution/people/students/'
+      preLoaderRoute: typeof InstitutionPeopleStudentsIndexRouteImport
+      parentRoute: typeof InstitutionPeopleStudentsRoute
+    }
+    '/institution/people/students/import/': {
+      id: '/institution/people/students/import/'
+      path: '/import'
+      fullPath: '/institution/people/students/import/'
+      preLoaderRoute: typeof InstitutionPeopleStudentsImportIndexRouteImport
+      parentRoute: typeof InstitutionPeopleStudentsRoute
+    }
+    '/institution/people/students/import/history': {
+      id: '/institution/people/students/import/history'
+      path: '/import/history'
+      fullPath: '/institution/people/students/import/history'
+      preLoaderRoute: typeof InstitutionPeopleStudentsImportHistoryRouteImport
+      parentRoute: typeof InstitutionPeopleStudentsRoute
+    }
+    '/institution/people/students/import/$importId': {
+      id: '/institution/people/students/import/$importId'
+      path: '/import/$importId'
+      fullPath: '/institution/people/students/import/$importId'
+      preLoaderRoute: typeof InstitutionPeopleStudentsImportImportIdRouteImport
+      parentRoute: typeof InstitutionPeopleStudentsRoute
+    }
   }
 }
+
+interface InstitutionPeopleStudentsRouteChildren {
+  InstitutionPeopleStudentsIndexRoute: typeof InstitutionPeopleStudentsIndexRoute
+  InstitutionPeopleStudentsImportImportIdRoute: typeof InstitutionPeopleStudentsImportImportIdRoute
+  InstitutionPeopleStudentsImportHistoryRoute: typeof InstitutionPeopleStudentsImportHistoryRoute
+  InstitutionPeopleStudentsImportIndexRoute: typeof InstitutionPeopleStudentsImportIndexRoute
+}
+
+const InstitutionPeopleStudentsRouteChildren: InstitutionPeopleStudentsRouteChildren =
+  {
+    InstitutionPeopleStudentsIndexRoute: InstitutionPeopleStudentsIndexRoute,
+    InstitutionPeopleStudentsImportImportIdRoute:
+      InstitutionPeopleStudentsImportImportIdRoute,
+    InstitutionPeopleStudentsImportHistoryRoute:
+      InstitutionPeopleStudentsImportHistoryRoute,
+    InstitutionPeopleStudentsImportIndexRoute:
+      InstitutionPeopleStudentsImportIndexRoute,
+  }
+
+const InstitutionPeopleStudentsRouteWithChildren =
+  InstitutionPeopleStudentsRoute._addFileChildren(
+    InstitutionPeopleStudentsRouteChildren,
+  )
 
 interface InstitutionRouteChildren {
   InstitutionLoginRoute: typeof InstitutionLoginRoute
@@ -390,6 +511,7 @@ interface InstitutionRouteChildren {
   InstitutionTeamRoute: typeof InstitutionTeamRoute
   InstitutionIndexRoute: typeof InstitutionIndexRoute
   InstitutionPeoplePersonIdRoute: typeof InstitutionPeoplePersonIdRoute
+  InstitutionPeopleStudentsRoute: typeof InstitutionPeopleStudentsRouteWithChildren
   InstitutionSignupAdminRoute: typeof InstitutionSignupAdminRoute
   InstitutionSignupInstitutionRoute: typeof InstitutionSignupInstitutionRoute
   InstitutionSignupReviewRoute: typeof InstitutionSignupReviewRoute
@@ -409,6 +531,7 @@ const InstitutionRouteChildren: InstitutionRouteChildren = {
   InstitutionTeamRoute: InstitutionTeamRoute,
   InstitutionIndexRoute: InstitutionIndexRoute,
   InstitutionPeoplePersonIdRoute: InstitutionPeoplePersonIdRoute,
+  InstitutionPeopleStudentsRoute: InstitutionPeopleStudentsRouteWithChildren,
   InstitutionSignupAdminRoute: InstitutionSignupAdminRoute,
   InstitutionSignupInstitutionRoute: InstitutionSignupInstitutionRoute,
   InstitutionSignupReviewRoute: InstitutionSignupReviewRoute,
