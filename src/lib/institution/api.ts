@@ -5,6 +5,7 @@ import {
   cancelInstitutionOrganizationInvitation,
   changeInstitutionPassword as changeInstitutionUserPassword,
   confirmPublicInstitutionVerificationByToken,
+  confirmInstitutionStudentRosterImport,
   createInstitutionOrganizationInvitation,
   getInstitutionAccountSessions,
   getInstitutionAccountSettings,
@@ -16,6 +17,10 @@ import {
   getInstitutionOrganizationPersonCredentials,
   getInstitutionOrganizationPersonPassportSummary,
   getInstitutionOrganizationPersonVerificationHistory,
+  getInstitutionStudentRoster,
+  getInstitutionStudentRosterImport,
+  getInstitutionStudentRosterImportRows,
+  getInstitutionStudentRosterImports,
   getInstitutionOrganizationVerificationRequests as fetchInstitutionOrganizationVerificationRequests,
   getInstitutionOrganizationTeam,
   getPublicInstitutionVerification,
@@ -42,6 +47,9 @@ import {
   verifyInstitutionVerificationRequest,
   requestInstitutionVerificationInformation,
   requestPublicInstitutionVerificationClarificationByToken,
+  downloadInstitutionStudentRosterErrorReport,
+  updateInstitutionStudentRosterMapping,
+  uploadInstitutionStudentRoster,
 } from "./backend";
 import {
   apiNotConfiguredError,
@@ -64,6 +72,12 @@ import type {
   InternalNote,
   MagicLinkRequest,
   Person,
+  StudentRosterDirectory,
+  StudentRosterErrorReport,
+  StudentRosterImport,
+  StudentRosterImportList,
+  StudentRosterImportRowList,
+  StudentRosterMappingAssignment,
   TeamInvitation,
   TeamMember,
   TimelineEvent,
@@ -188,6 +202,42 @@ interface InstitutionRepository {
   restoreTeamMember: (organizationId: string, id: string) => Promise<TeamMember | undefined>;
   removeTeamMember: (organizationId: string, id: string) => Promise<void>;
   transferTeamOwnership: (organizationId: string, id: string) => Promise<void>;
+  getStudentRoster: (
+    organizationId: string,
+    filters?: { search?: string; page?: number; pageSize?: number },
+  ) => Promise<StudentRosterDirectory>;
+  uploadStudentRoster: (organizationId: string, file: File) => Promise<StudentRosterImport>;
+  getStudentRosterImport: (
+    organizationId: string,
+    importId: string,
+  ) => Promise<StudentRosterImport>;
+  updateStudentRosterMapping: (
+    organizationId: string,
+    importId: string,
+    assignments: StudentRosterMappingAssignment[],
+  ) => Promise<StudentRosterImport>;
+  confirmStudentRosterImport: (
+    organizationId: string,
+    importId: string,
+  ) => Promise<StudentRosterImport>;
+  getStudentRosterImportRows: (
+    organizationId: string,
+    importId: string,
+    filters?: {
+      disposition?: StudentRosterImportRowList["items"][number]["disposition"];
+      applicationStatus?: StudentRosterImportRowList["items"][number]["applicationStatus"];
+      page?: number;
+      pageSize?: number;
+    },
+  ) => Promise<StudentRosterImportRowList>;
+  getStudentRosterImports: (
+    organizationId: string,
+    filters?: { state?: StudentRosterImport["state"]; page?: number; pageSize?: number },
+  ) => Promise<StudentRosterImportList>;
+  downloadStudentRosterErrorReport: (
+    organizationId: string,
+    importId: string,
+  ) => Promise<StudentRosterErrorReport>;
 }
 
 interface PublicVerificationRepository {
@@ -871,6 +921,30 @@ function demoInstitutionRepository(): InstitutionRepository {
 
       return delay(undefined);
     },
+    async getStudentRoster() {
+      assertInstitutionBackend("Student roster");
+    },
+    async uploadStudentRoster() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImport() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async updateStudentRosterMapping() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async confirmStudentRosterImport() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImportRows() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImports() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async downloadStudentRosterErrorReport() {
+      assertInstitutionBackend("Student roster imports");
+    },
   };
 }
 
@@ -980,6 +1054,30 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     },
     async transferTeamOwnership() {
       assertInstitutionBackend("Institution team management");
+    },
+    async getStudentRoster() {
+      assertInstitutionBackend("Student roster");
+    },
+    async uploadStudentRoster() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImport() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async updateStudentRosterMapping() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async confirmStudentRosterImport() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImportRows() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async getStudentRosterImports() {
+      assertInstitutionBackend("Student roster imports");
+    },
+    async downloadStudentRosterErrorReport() {
+      assertInstitutionBackend("Student roster imports");
     },
   };
 }
@@ -1139,6 +1237,30 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async transferTeamOwnership(organizationId, id) {
       return transferInstitutionOrganizationOwnership(organizationId, id);
+    },
+    async getStudentRoster(organizationId, filters) {
+      return getInstitutionStudentRoster(organizationId, filters);
+    },
+    async uploadStudentRoster(organizationId, file) {
+      return uploadInstitutionStudentRoster(organizationId, file);
+    },
+    async getStudentRosterImport(organizationId, importId) {
+      return getInstitutionStudentRosterImport(organizationId, importId);
+    },
+    async updateStudentRosterMapping(organizationId, importId, assignments) {
+      return updateInstitutionStudentRosterMapping(organizationId, importId, assignments);
+    },
+    async confirmStudentRosterImport(organizationId, importId) {
+      return confirmInstitutionStudentRosterImport(organizationId, importId);
+    },
+    async getStudentRosterImportRows(organizationId, importId, filters) {
+      return getInstitutionStudentRosterImportRows(organizationId, importId, filters);
+    },
+    async getStudentRosterImports(organizationId, filters) {
+      return getInstitutionStudentRosterImports(organizationId, filters);
+    },
+    async downloadStudentRosterErrorReport(organizationId, importId) {
+      return downloadInstitutionStudentRosterErrorReport(organizationId, importId);
     },
   };
 }
@@ -1343,6 +1465,63 @@ export async function getInstitutionPersonCredentials(
   id: string,
 ): Promise<Person["credentials"]> {
   return institutionRepository.getPersonCredentials(organizationId, id);
+}
+
+export async function getInstitutionStudentRosterDirectory(
+  organizationId: string,
+  filters?: { search?: string; page?: number; pageSize?: number },
+) {
+  return institutionRepository.getStudentRoster(organizationId, filters);
+}
+
+export async function uploadInstitutionStudentRosterFile(organizationId: string, file: File) {
+  return institutionRepository.uploadStudentRoster(organizationId, file);
+}
+
+export async function getInstitutionStudentRosterImportDetail(
+  organizationId: string,
+  importId: string,
+) {
+  return institutionRepository.getStudentRosterImport(organizationId, importId);
+}
+
+export async function saveInstitutionStudentRosterMapping(
+  organizationId: string,
+  importId: string,
+  assignments: StudentRosterMappingAssignment[],
+) {
+  return institutionRepository.updateStudentRosterMapping(organizationId, importId, assignments);
+}
+
+export async function confirmInstitutionStudentRoster(organizationId: string, importId: string) {
+  return institutionRepository.confirmStudentRosterImport(organizationId, importId);
+}
+
+export async function getInstitutionStudentRosterRows(
+  organizationId: string,
+  importId: string,
+  filters?: {
+    disposition?: StudentRosterImportRowList["items"][number]["disposition"];
+    applicationStatus?: StudentRosterImportRowList["items"][number]["applicationStatus"];
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  return institutionRepository.getStudentRosterImportRows(organizationId, importId, filters);
+}
+
+export async function getInstitutionStudentRosterImportHistory(
+  organizationId: string,
+  filters?: { state?: StudentRosterImport["state"]; page?: number; pageSize?: number },
+) {
+  return institutionRepository.getStudentRosterImports(organizationId, filters);
+}
+
+export async function getInstitutionStudentRosterErrorReport(
+  organizationId: string,
+  importId: string,
+) {
+  return institutionRepository.downloadStudentRosterErrorReport(organizationId, importId);
 }
 
 export async function getInstitutionTeam(organizationId: string): Promise<InstitutionTeam> {

@@ -4,6 +4,7 @@ export interface InstitutionPermissions {
   canViewVerificationRequests: boolean;
   canRespondToVerificationRequests: boolean;
   canViewPeople: boolean;
+  canImportStudentRoster: boolean;
   canManageTeam: boolean;
   canManageSettings: boolean;
   canManageOwnerActions: boolean;
@@ -14,6 +15,7 @@ const noPermissions: InstitutionPermissions = {
   canViewVerificationRequests: false,
   canRespondToVerificationRequests: false,
   canViewPeople: false,
+  canImportStudentRoster: false,
   canManageTeam: false,
   canManageSettings: false,
   canManageOwnerActions: false,
@@ -25,6 +27,7 @@ const rolePermissions: Record<Role, InstitutionPermissions> = {
     canViewVerificationRequests: true,
     canRespondToVerificationRequests: true,
     canViewPeople: true,
+    canImportStudentRoster: true,
     canManageTeam: true,
     canManageSettings: true,
     canManageOwnerActions: true,
@@ -34,6 +37,7 @@ const rolePermissions: Record<Role, InstitutionPermissions> = {
     canViewVerificationRequests: true,
     canRespondToVerificationRequests: true,
     canViewPeople: true,
+    canImportStudentRoster: true,
     canManageTeam: true,
     canManageSettings: true,
     canManageOwnerActions: false,
@@ -43,6 +47,7 @@ const rolePermissions: Record<Role, InstitutionPermissions> = {
     canViewVerificationRequests: true,
     canRespondToVerificationRequests: true,
     canViewPeople: true,
+    canImportStudentRoster: false,
     canManageTeam: false,
     canManageSettings: false,
     canManageOwnerActions: false,
@@ -52,6 +57,7 @@ const rolePermissions: Record<Role, InstitutionPermissions> = {
     canViewVerificationRequests: true,
     canRespondToVerificationRequests: true,
     canViewPeople: true,
+    canImportStudentRoster: false,
     canManageTeam: false,
     canManageSettings: false,
     canManageOwnerActions: false,
@@ -66,6 +72,7 @@ export function getInstitutionPermissions(session: Session | null | undefined) {
       canViewVerificationRequests: session.permissionFlags.modifyVerification,
       canRespondToVerificationRequests: session.permissionFlags.modifyVerification,
       canViewPeople: session.permissionFlags.modifyPerson,
+      canImportStudentRoster: session.role === "owner" || session.role === "admin",
       canManageTeam: session.permissionFlags.manageTeam,
       canManageSettings: session.permissionFlags.saveSettings,
       canManageOwnerActions: session.permissionFlags.transferOwnership,
