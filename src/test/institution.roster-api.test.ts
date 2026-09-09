@@ -65,24 +65,35 @@ describe("institution student roster backend contract", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            public_id: "person_001",
+            summary: { full_name: "Amina Rahman" },
+            organization_relationship: {
+              resolution_method: "organization_import",
+              resolution_metadata: { source_import_id: "import_001" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
             items: [
               {
-                row_number: 2,
-                raw_values: { "Student ID": "S-100" },
-                normalized_values: {
+                organization_person_id: "person_001",
+                roster_type: "student",
+                full_name: "Amina Rahman",
+                email: "amina@university.edu",
+                phone: null,
+                roster_data: {
                   student_id: "S-100",
-                  full_name: "Amina Rahman",
-                  institutional_email: "amina@university.edu",
                   program: "Computer Science",
                 },
-                disposition: "valid_new",
-                validation_errors: [],
-                primary_identifier: "S-100",
-                matched_organization_person_id: null,
-                result_organization_person_id: "person_001",
-                application_status: "created",
-                application_errors: [],
-                applied_at: "2026-09-09T10:01:00Z",
+                source_status: "organization_provided",
+                verified: false,
+                source_import_id: "import_001",
+                source_row_number: 2,
+                imported_at: "2026-09-09T10:01:00Z",
               },
             ],
             total: 1,
@@ -117,7 +128,8 @@ describe("institution student roster backend contract", () => {
     });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "https://api.example.com/api/v1/organizations/org_001/institution/people/person_001",
-      "https://api.example.com/api/v1/organizations/org_001/roster-imports/import_001/rows?page=1&page_size=100",
+      "https://api.example.com/api/v1/organizations/org_001/people/person_001",
+      "https://api.example.com/api/v1/organizations/org_001/roster/students?search=Amina+Rahman&page=1&page_size=100",
     ]);
   });
 
@@ -133,16 +145,30 @@ describe("institution student roster backend contract", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            public_id: "person_001",
+            summary: { full_name: "Amina Rahman" },
+            organization_relationship: {
+              resolution_method: "organization_import",
+              resolution_metadata: { source_import_id: "import_001" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
             items: [
               {
-                row_number: 2,
-                raw_values: {},
-                normalized_values: { student_id: "OTHER" },
-                disposition: "valid_new",
-                validation_errors: [],
-                result_organization_person_id: "different_person",
-                application_status: "created",
-                application_errors: [],
+                organization_person_id: "different_person",
+                roster_type: "student",
+                full_name: "Amina Rahman",
+                roster_data: { student_id: "OTHER" },
+                source_status: "organization_provided",
+                verified: false,
+                source_import_id: "import_001",
+                source_row_number: 2,
+                imported_at: "2026-09-09T10:01:00Z",
               },
             ],
             total: 1,

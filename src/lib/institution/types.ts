@@ -454,6 +454,13 @@ export interface StudentRosterPerson {
   importedAt: string;
 }
 
+export interface OrganizationPersonReference {
+  id: string;
+  fullName: string;
+  resolutionMethod?: string | null;
+  sourceImportId?: string | null;
+}
+
 export type InstitutionPersonDetailResult =
   | { kind: "institution"; person: Person }
   | { kind: "organization_roster"; person: StudentRosterPerson };

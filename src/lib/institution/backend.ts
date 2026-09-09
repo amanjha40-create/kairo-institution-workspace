@@ -21,6 +21,7 @@ import type {
   InternalNote,
   InstitutionWorkspaceBootstrap,
   MagicLinkRequest,
+  OrganizationPersonReference,
   Person,
   StudentRosterDirectory,
   StudentRosterErrorReport,
@@ -677,6 +678,17 @@ interface BackendStudentRosterListResponse {
   total_pages: number;
   offset: number;
   limit: number;
+}
+
+interface BackendOrganizationPersonDetailResponse {
+  public_id: string;
+  summary: {
+    full_name: string;
+  };
+  organization_relationship: {
+    resolution_method?: string | null;
+    resolution_metadata?: Record<string, unknown>;
+  };
 }
 
 interface ApiRequestOptions extends RequestInit {
@@ -2599,6 +2611,27 @@ export async function getInstitutionOrganizationPerson(
     );
 
     return mapInstitutionPersonDetail(payload);
+  });
+}
+
+export async function getInstitutionOrganizationPersonReference(
+  orgPublicId: string,
+  personPublicId: string,
+): Promise<OrganizationPersonReference> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationPersonDetailResponse>(
+      `/api/v1/organizations/${orgPublicId}/people/${personPublicId}`,
+      { method: "GET" },
+      accessToken,
+    );
+    const sourceImportId = payload.organization_relationship.resolution_metadata?.source_import_id;
+
+    return {
+      id: payload.public_id,
+      fullName: payload.summary.full_name,
+      resolutionMethod: payload.organization_relationship.resolution_method,
+      sourceImportId: typeof sourceImportId === "string" ? sourceImportId : null,
+    };
   });
 }
 
