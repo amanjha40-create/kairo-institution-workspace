@@ -239,6 +239,7 @@ function PeoplePage() {
                       <Link
                         to="/institution/people/$personId"
                         params={{ personId: person.id }}
+                        search={{ rosterImportId: undefined, rosterRowNumber: undefined }}
                         className="font-medium text-foreground hover:text-[color:var(--kairo-navy)]"
                       >
                         {person.name}
@@ -282,6 +283,7 @@ function PeoplePage() {
                 key={person.id}
                 to="/institution/people/$personId"
                 params={{ personId: person.id }}
+                search={{ rosterImportId: undefined, rosterRowNumber: undefined }}
                 className="block rounded-lg border border-border bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">

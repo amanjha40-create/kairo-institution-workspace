@@ -454,6 +454,20 @@ export interface StudentRosterPerson {
   importedAt: string;
 }
 
+export interface OrganizationPersonReference {
+  id: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  resolutionMethod?: string | null;
+  sourceImportId?: string | null;
+  addedAt: string;
+}
+
+export type InstitutionPersonDetailResult =
+  | { kind: "institution"; person: Person }
+  | { kind: "organization_roster"; person: StudentRosterPerson };
+
 export interface StudentRosterDirectory {
   items: StudentRosterPerson[];
   total: number;

@@ -53,6 +53,175 @@ afterEach(() => {
 });
 
 describe("institution student roster backend contract", () => {
+  it("resolves roster-only detail with the canonical organization-person and import-row IDs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Institution person not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            public_id: "person_001",
+            summary: {
+              full_name: "Amina Rahman",
+              email: "amina@university.edu",
+              phone: null,
+            },
+            organization_relationship: {
+              added_at: "2026-09-09T10:00:00Z",
+              resolution_method: "organization_import",
+              resolution_metadata: { source_import_id: "import_001" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                row_number: 2,
+                raw_values: { "Student ID": "S-100" },
+                normalized_values: {
+                  student_id: "S-100",
+                  full_name: "Amina Rahman",
+                  program: "Computer Science",
+                },
+                disposition: "valid_new",
+                validation_errors: [],
+                primary_identifier: "S-100",
+                matched_organization_person_id: null,
+                result_organization_person_id: "person_001",
+                application_status: "created",
+                application_errors: [],
+                applied_at: "2026-09-09T10:01:00Z",
+              },
+            ],
+            total: 1,
+            page: 1,
+            page_size: 100,
+            total_pages: 1,
+            offset: 0,
+            limit: 100,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await importBackend();
+    const api = await import("@/lib/institution/api");
+
+    await expect(
+      api.getInstitutionPersonDetail("org_001", "person_001", {
+        importId: "import_001",
+        rowNumber: 2,
+      }),
+    ).resolves.toMatchObject({
+      kind: "organization_roster",
+      person: {
+        id: "person_001",
+        sourceStatus: "organization_provided",
+        verified: false,
+        rosterData: { student_id: "S-100", program: "Computer Science" },
+      },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.example.com/api/v1/organizations/org_001/institution/people/person_001",
+      "https://api.example.com/api/v1/organizations/org_001/people/person_001",
+      "https://api.example.com/api/v1/organizations/org_001/roster-imports/import_001/rows?page=1&page_size=100",
+    ]);
+  });
+
+  it("fails closed unless the import row proves the same organization-person ID", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Institution person not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            public_id: "person_001",
+            summary: { full_name: "Amina Rahman" },
+            organization_relationship: {
+              added_at: "2026-09-09T10:00:00Z",
+              resolution_method: "organization_import",
+              resolution_metadata: { source_import_id: "import_001" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                row_number: 2,
+                raw_values: {},
+                normalized_values: { student_id: "OTHER" },
+                disposition: "valid_new",
+                validation_errors: [],
+                result_organization_person_id: "different_person",
+                application_status: "created",
+                application_errors: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            page_size: 100,
+            total_pages: 1,
+            offset: 0,
+            limit: 100,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await importBackend();
+    const api = await import("@/lib/institution/api");
+
+    await expect(
+      api.getInstitutionPersonDetail("org_001", "person_001", {
+        importId: "import_001",
+        rowNumber: 2,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+
+  it("propagates organization-scoped forbidden responses for cross-org detail IDs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Institution person not found" } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Organization access denied" } }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await importBackend();
+    const api = await import("@/lib/institution/api");
+
+    await expect(api.getInstitutionPersonDetail("org_001", "person_other")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+  });
+
   it("uploads a student CSV as authenticated multipart data without forcing a JSON content type", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(previewPayload), {

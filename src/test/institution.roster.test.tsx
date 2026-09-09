@@ -196,6 +196,8 @@ async function renderRosterRoute(
           },
           sourceStatus: "organization_provided",
           verified: false,
+          sourceImportId: "import_001",
+          sourceRowNumber: 2,
           importedAt: "2026-09-09T10:00:00Z",
         },
       ],
@@ -308,6 +310,12 @@ describe("institution student roster import", () => {
     expect(await screen.findByRole("heading", { name: "Student roster" })).toBeInTheDocument();
     expect(screen.getAllByText("Organization-provided").length).toBeGreaterThan(0);
     expect(screen.queryByText(/^Verified$/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Amina Rahman" })).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/institution/people/person_001?rosterImportId=import_001&rosterRowNumber=2",
+      ),
+    );
   });
 
   it("validates files and exposes the upload affordances", async () => {

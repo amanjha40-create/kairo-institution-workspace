@@ -14,6 +14,7 @@ import {
   getInstitutionOrganization,
   getInstitutionOrganizationPeople as fetchInstitutionOrganizationPeople,
   getInstitutionOrganizationPerson,
+  getInstitutionOrganizationPersonReference,
   getInstitutionOrganizationPersonCredentials,
   getInstitutionOrganizationPersonPassportSummary,
   getInstitutionOrganizationPersonVerificationHistory,
@@ -55,6 +56,7 @@ import {
   apiNotConfiguredError,
   conflictError,
   forbiddenError,
+  isInstitutionError,
   notFoundError,
   serviceUnavailableError,
   unauthorizedError,
@@ -65,6 +67,7 @@ import type {
   InstitutionAccountPreferences,
   InstitutionDashboard,
   InstitutionNotificationCenter,
+  InstitutionPersonDetailResult,
   InstitutionPassportSummary,
   InstitutionPeopleDirectory,
   InstitutionTeam,
@@ -72,6 +75,7 @@ import type {
   InternalNote,
   MagicLinkRequest,
   Person,
+  OrganizationPersonReference,
   StudentRosterDirectory,
   StudentRosterErrorReport,
   StudentRosterImport,
@@ -143,6 +147,10 @@ interface InstitutionRepository {
     },
   ) => Promise<InstitutionPeopleDirectory>;
   getPerson: (organizationId: string, id: string) => Promise<Person | undefined>;
+  getOrganizationPersonReference: (
+    organizationId: string,
+    id: string,
+  ) => Promise<OrganizationPersonReference>;
   getPersonPassportSummary: (
     organizationId: string,
     id: string,
@@ -627,6 +635,9 @@ function demoInstitutionRepository(): InstitutionRepository {
       const state = await getDemoInstitutionState();
       return delay(cloneFixture(state.people.find((person) => person.id === id)));
     },
+    async getOrganizationPersonReference() {
+      assertInstitutionBackend("Student roster");
+    },
     async getPersonPassportSummary(_organizationId, id) {
       const state = await getDemoInstitutionState();
       const person = state.people.find((candidate) => candidate.id === id);
@@ -989,6 +1000,9 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getPerson() {
       assertInstitutionBackend("Institution people");
     },
+    async getOrganizationPersonReference() {
+      assertInstitutionBackend("Institution people");
+    },
     async getPersonPassportSummary() {
       assertInstitutionBackend("Institution people");
     },
@@ -1143,6 +1157,9 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async getPerson(organizationId, id) {
       return getInstitutionOrganizationPerson(organizationId, id);
+    },
+    async getOrganizationPersonReference(organizationId, id) {
+      return getInstitutionOrganizationPersonReference(organizationId, id);
     },
     async getPersonPassportSummary(organizationId, id) {
       return getInstitutionOrganizationPersonPassportSummary(organizationId, id);
@@ -1444,6 +1461,68 @@ export async function getInstitutionPerson(
   id: string,
 ): Promise<Person | undefined> {
   return institutionRepository.getPerson(organizationId, id);
+}
+
+export async function getInstitutionPersonDetail(
+  organizationId: string,
+  id: string,
+  rosterSource?: { importId?: string; rowNumber?: number },
+): Promise<InstitutionPersonDetailResult> {
+  try {
+    const person = await institutionRepository.getPerson(organizationId, id);
+    if (!person) throw notFoundError("This person could not be found.");
+    return { kind: "institution", person };
+  } catch (error) {
+    if (!isInstitutionError(error) || error.status !== 404) throw error;
+  }
+
+  const reference = await institutionRepository.getOrganizationPersonReference(organizationId, id);
+  if (reference.resolutionMethod !== "organization_import") {
+    throw notFoundError("This person is not available in the institution directory.");
+  }
+
+  const sourceImportId = reference.sourceImportId;
+  const sourceRowNumber = rosterSource?.rowNumber;
+  const sourceMatches =
+    sourceImportId &&
+    rosterSource?.importId === reference.sourceImportId &&
+    sourceRowNumber &&
+    Number.isInteger(sourceRowNumber) &&
+    sourceRowNumber > 1;
+
+  if (!sourceMatches) {
+    throw notFoundError("The organization-provided source record could not be resolved.");
+  }
+
+  const pageSize = 100;
+  const page = Math.floor((sourceRowNumber - 2) / pageSize) + 1;
+  const rows = await institutionRepository.getStudentRosterImportRows(
+    organizationId,
+    sourceImportId,
+    { page, pageSize },
+  );
+  const sourceRow = rows.items.find(
+    (row) => row.rowNumber === sourceRowNumber && row.resultOrganizationPersonId === reference.id,
+  );
+  if (!sourceRow) {
+    throw notFoundError("The organization-provided source record could not be resolved.");
+  }
+
+  return {
+    kind: "organization_roster",
+    person: {
+      id: reference.id,
+      fullName: reference.fullName,
+      email: reference.email,
+      phone: reference.phone,
+      rosterData: sourceRow.normalizedValues,
+      sourceStatus: "organization_provided",
+      verified: false,
+      sourceImportId: reference.sourceImportId,
+      sourceRowNumber,
+      importedAt: reference.addedAt,
+    },
+  };
 }
 
 export async function getInstitutionPersonPassportSummary(

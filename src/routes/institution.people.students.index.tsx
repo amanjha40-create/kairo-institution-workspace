@@ -165,6 +165,10 @@ function StudentRosterPage() {
                       <Link
                         to="/institution/people/$personId"
                         params={{ personId: student.id }}
+                        search={{
+                          rosterImportId: student.sourceImportId ?? undefined,
+                          rosterRowNumber: student.sourceRowNumber ?? undefined,
+                        }}
                         className="font-medium text-foreground hover:text-[color:var(--kairo-navy)]"
                       >
                         {student.fullName}
@@ -202,6 +206,10 @@ function StudentRosterPage() {
                 key={student.id}
                 to="/institution/people/$personId"
                 params={{ personId: student.id }}
+                search={{
+                  rosterImportId: student.sourceImportId ?? undefined,
+                  rosterRowNumber: student.sourceRowNumber ?? undefined,
+                }}
                 className="block rounded-lg border border-border bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
