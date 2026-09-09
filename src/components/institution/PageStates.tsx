@@ -1,4 +1,4 @@
-import { AlertTriangle, Inbox, Lock, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileQuestion, Inbox, Lock, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function LoadingState({ label = "Loading..." }: { label?: string }) {
@@ -58,6 +58,22 @@ export function PermissionDeniedState() {
       <div className="mt-1 max-w-sm text-xs text-muted-foreground">
         Ask an Owner or Admin on your institution's workspace to grant you access.
       </div>
+    </div>
+  );
+}
+
+export function NotFoundState({
+  title = "This item could not be found",
+  description = "It may have been removed or may not belong to the active institution.",
+}: {
+  title?: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-white/60 py-12 text-center">
+      <FileQuestion className="mb-2 h-5 w-5 text-muted-foreground" aria-hidden="true" />
+      <div className="text-sm font-medium">{title}</div>
+      <div className="mt-1 max-w-sm text-xs text-muted-foreground">{description}</div>
     </div>
   );
 }
