@@ -65,24 +65,6 @@ describe("institution student roster backend contract", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            public_id: "person_001",
-            summary: {
-              full_name: "Amina Rahman",
-              email: "amina@university.edu",
-              phone: null,
-            },
-            organization_relationship: {
-              added_at: "2026-09-09T10:00:00Z",
-              resolution_method: "organization_import",
-              resolution_metadata: { source_import_id: "import_001" },
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
             items: [
               {
                 row_number: 2,
@@ -90,6 +72,7 @@ describe("institution student roster backend contract", () => {
                 normalized_values: {
                   student_id: "S-100",
                   full_name: "Amina Rahman",
+                  institutional_email: "amina@university.edu",
                   program: "Computer Science",
                 },
                 disposition: "valid_new",
@@ -125,6 +108,8 @@ describe("institution student roster backend contract", () => {
       kind: "organization_roster",
       person: {
         id: "person_001",
+        fullName: "Amina Rahman",
+        email: "amina@university.edu",
         sourceStatus: "organization_provided",
         verified: false,
         rosterData: { student_id: "S-100", program: "Computer Science" },
@@ -132,7 +117,6 @@ describe("institution student roster backend contract", () => {
     });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "https://api.example.com/api/v1/organizations/org_001/institution/people/person_001",
-      "https://api.example.com/api/v1/organizations/org_001/people/person_001",
       "https://api.example.com/api/v1/organizations/org_001/roster-imports/import_001/rows?page=1&page_size=100",
     ]);
   });
@@ -145,20 +129,6 @@ describe("institution student roster backend contract", () => {
           status: 404,
           headers: { "Content-Type": "application/json" },
         }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            public_id: "person_001",
-            summary: { full_name: "Amina Rahman" },
-            organization_relationship: {
-              added_at: "2026-09-09T10:00:00Z",
-              resolution_method: "organization_import",
-              resolution_metadata: { source_import_id: "import_001" },
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -216,10 +186,12 @@ describe("institution student roster backend contract", () => {
     await importBackend();
     const api = await import("@/lib/institution/api");
 
-    await expect(api.getInstitutionPersonDetail("org_001", "person_other")).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      status: 403,
-    });
+    await expect(
+      api.getInstitutionPersonDetail("org_001", "person_other", {
+        importId: "cross_org_import",
+        rowNumber: 2,
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
   });
 
   it("uploads a student CSV as authenticated multipart data without forcing a JSON content type", async () => {

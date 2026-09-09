@@ -14,7 +14,6 @@ import {
   getInstitutionOrganization,
   getInstitutionOrganizationPeople as fetchInstitutionOrganizationPeople,
   getInstitutionOrganizationPerson,
-  getInstitutionOrganizationPersonReference,
   getInstitutionOrganizationPersonCredentials,
   getInstitutionOrganizationPersonPassportSummary,
   getInstitutionOrganizationPersonVerificationHistory,
@@ -75,7 +74,6 @@ import type {
   InternalNote,
   MagicLinkRequest,
   Person,
-  OrganizationPersonReference,
   StudentRosterDirectory,
   StudentRosterErrorReport,
   StudentRosterImport,
@@ -147,10 +145,6 @@ interface InstitutionRepository {
     },
   ) => Promise<InstitutionPeopleDirectory>;
   getPerson: (organizationId: string, id: string) => Promise<Person | undefined>;
-  getOrganizationPersonReference: (
-    organizationId: string,
-    id: string,
-  ) => Promise<OrganizationPersonReference>;
   getPersonPassportSummary: (
     organizationId: string,
     id: string,
@@ -635,9 +629,6 @@ function demoInstitutionRepository(): InstitutionRepository {
       const state = await getDemoInstitutionState();
       return delay(cloneFixture(state.people.find((person) => person.id === id)));
     },
-    async getOrganizationPersonReference() {
-      assertInstitutionBackend("Student roster");
-    },
     async getPersonPassportSummary(_organizationId, id) {
       const state = await getDemoInstitutionState();
       const person = state.people.find((candidate) => candidate.id === id);
@@ -1000,9 +991,6 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     async getPerson() {
       assertInstitutionBackend("Institution people");
     },
-    async getOrganizationPersonReference() {
-      assertInstitutionBackend("Institution people");
-    },
     async getPersonPassportSummary() {
       assertInstitutionBackend("Institution people");
     },
@@ -1157,9 +1145,6 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async getPerson(organizationId, id) {
       return getInstitutionOrganizationPerson(organizationId, id);
-    },
-    async getOrganizationPersonReference(organizationId, id) {
-      return getInstitutionOrganizationPersonReference(organizationId, id);
     },
     async getPersonPassportSummary(organizationId, id) {
       return getInstitutionOrganizationPersonPassportSummary(organizationId, id);
@@ -1476,16 +1461,11 @@ export async function getInstitutionPersonDetail(
     if (!isInstitutionError(error) || error.status !== 404) throw error;
   }
 
-  const reference = await institutionRepository.getOrganizationPersonReference(organizationId, id);
-  if (reference.resolutionMethod !== "organization_import") {
-    throw notFoundError("This person is not available in the institution directory.");
-  }
-
-  const sourceImportId = reference.sourceImportId;
+  const sourceImportId = rosterSource?.importId;
   const sourceRowNumber = rosterSource?.rowNumber;
   const sourceMatches =
-    sourceImportId &&
-    rosterSource?.importId === reference.sourceImportId &&
+    typeof sourceImportId === "string" &&
+    sourceImportId.length > 0 &&
     sourceRowNumber &&
     Number.isInteger(sourceRowNumber) &&
     sourceRowNumber > 1;
@@ -1502,25 +1482,29 @@ export async function getInstitutionPersonDetail(
     { page, pageSize },
   );
   const sourceRow = rows.items.find(
-    (row) => row.rowNumber === sourceRowNumber && row.resultOrganizationPersonId === reference.id,
+    (row) => row.rowNumber === sourceRowNumber && row.resultOrganizationPersonId === id,
   );
-  if (!sourceRow) {
+  const fullName = sourceRow?.normalizedValues.full_name;
+  if (!sourceRow || typeof fullName !== "string" || !fullName.trim() || !sourceRow.appliedAt) {
     throw notFoundError("The organization-provided source record could not be resolved.");
   }
+
+  const email = sourceRow.normalizedValues.institutional_email;
+  const phone = sourceRow.normalizedValues.phone;
 
   return {
     kind: "organization_roster",
     person: {
-      id: reference.id,
-      fullName: reference.fullName,
-      email: reference.email,
-      phone: reference.phone,
+      id,
+      fullName: fullName.trim(),
+      email: typeof email === "string" ? email : null,
+      phone: typeof phone === "string" ? phone : null,
       rosterData: sourceRow.normalizedValues,
       sourceStatus: "organization_provided",
       verified: false,
-      sourceImportId: reference.sourceImportId,
+      sourceImportId,
       sourceRowNumber,
-      importedAt: reference.addedAt,
+      importedAt: sourceRow.appliedAt,
     },
   };
 }
