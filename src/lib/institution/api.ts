@@ -1496,12 +1496,14 @@ export async function getInstitutionPersonDetail(
 
   const pageSize = 100;
   let page = 1;
-  do {
+  let totalPages = 1;
+  while (page <= totalPages) {
     const roster = await institutionRepository.getStudentRoster(organizationId, {
       search: reference.fullName,
       page,
       pageSize,
     });
+    totalPages = roster.totalPages;
     const person = roster.items.find(
       (item) =>
         item.id === id &&
@@ -1509,9 +1511,8 @@ export async function getInstitutionPersonDetail(
         item.sourceRowNumber === sourceRowNumber,
     );
     if (person) return { kind: "organization_roster", person };
-    if (page >= roster.totalPages) break;
     page += 1;
-  } while (true);
+  }
 
   throw notFoundError("The organization-provided source record could not be resolved.");
 }
