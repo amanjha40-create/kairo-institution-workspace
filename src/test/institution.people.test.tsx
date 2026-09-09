@@ -18,11 +18,16 @@ function ownerSession() {
   };
 }
 
-async function renderRoute(path: string) {
+async function renderRoute(
+  path: string,
+  overrides: Record<string, ReturnType<typeof vi.fn>> = {},
+  detailError?: "not_found" | "forbidden",
+) {
   vi.resetModules();
   vi.stubEnv("VITE_APP_ENV", "test");
   vi.stubEnv("VITE_DEMO_MODE", "false");
   vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+  const errors = await import("@/lib/institution/errors");
 
   const peopleApi = {
     getInstitutionNotifications: vi.fn().mockResolvedValue({
@@ -199,6 +204,10 @@ async function renderRoute(path: string) {
       ],
       lastUpdated: "2026-07-24T10:00:00Z",
     }),
+    getInstitutionPersonDetail: vi.fn().mockImplementation(async () => ({
+      kind: "institution",
+      person: await peopleApi.getInstitutionPerson(),
+    })),
     getInstitutionPersonVerificationHistory: vi.fn().mockResolvedValue([
       {
         id: "event_001",
@@ -258,6 +267,16 @@ async function renderRoute(path: string) {
         },
       ],
     }),
+    ...overrides,
+    ...(detailError
+      ? {
+          getInstitutionPersonDetail: vi
+            .fn()
+            .mockRejectedValue(
+              detailError === "not_found" ? errors.notFoundError() : errors.forbiddenError(),
+            ),
+        }
+      : {}),
   };
 
   vi.doMock("@/lib/institution/api", () => peopleApi);
@@ -324,7 +343,11 @@ describe("institution people routes", () => {
     expect(screen.getByText("Bachelor of Science Degree Certificate")).toBeInTheDocument();
     expect(screen.getByText("pending to verified")).toBeInTheDocument();
     expect(screen.getByText("Lifecycle changed to Alumni")).toBeInTheDocument();
-    expect(peopleApi.getInstitutionPerson).toHaveBeenCalledWith("inst_northbridge", "person_001");
+    expect(peopleApi.getInstitutionPersonDetail).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "person_001",
+      { importId: undefined, rowNumber: undefined },
+    );
     expect(peopleApi.getInstitutionPersonPassportSummary).toHaveBeenCalledWith(
       "inst_northbridge",
       "person_001",
@@ -337,5 +360,69 @@ describe("institution people routes", () => {
       "inst_northbridge",
       "person_001",
     );
+  });
+
+  it("renders a roster-only student from the canonical organization-person ID", async () => {
+    const getInstitutionPersonDetail = vi.fn().mockResolvedValue({
+      kind: "organization_roster",
+      person: {
+        id: "person_roster_001",
+        fullName: "Roster Student",
+        email: "roster.student@university.edu",
+        phone: null,
+        rosterData: {
+          student_id: "STU-001",
+          roll_number: "ROLL-9",
+          degree: "Bachelor of Science",
+          program: "Computer Science",
+          department: "Engineering",
+          admission_date: "2024",
+          enrollment_status: "current",
+        },
+        sourceStatus: "organization_provided",
+        verified: false,
+        sourceImportId: "import_001",
+        sourceRowNumber: 2,
+        importedAt: "2026-09-09T10:00:00Z",
+      },
+    });
+    const peopleApi = await renderRoute(
+      "/institution/people/person_roster_001?rosterImportId=import_001&rosterRowNumber=2",
+      { getInstitutionPersonDetail },
+    );
+
+    expect(await screen.findByRole("heading", { name: "Roster Student" })).toBeInTheDocument();
+    expect(screen.getByText("Organization-provided")).toBeInTheDocument();
+    expect(screen.getByText("STU-001")).toBeInTheDocument();
+    expect(screen.getByText("ROLL-9")).toBeInTheDocument();
+    expect(screen.getByText("roster.student@university.edu")).toBeInTheDocument();
+    expect(screen.getByText("Candidate-owned information unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("Not available").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^Verified$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Passport summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("Institution credentials")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verification activity")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Student roster" })).toHaveAttribute(
+      "href",
+      "/institution/people/students",
+    );
+    expect(peopleApi.getInstitutionPersonPassportSummary).not.toHaveBeenCalled();
+    expect(peopleApi.getInstitutionPersonVerificationHistory).not.toHaveBeenCalled();
+    expect(peopleApi.getInstitutionPersonCredentials).not.toHaveBeenCalled();
+    expect(getInstitutionPersonDetail).toHaveBeenCalledWith(
+      "inst_northbridge",
+      "person_roster_001",
+      { importId: "import_001", rowNumber: 2 },
+    );
+  });
+
+  it("keeps missing people as a clean not-found state", async () => {
+    await renderRoute("/institution/people/missing", {}, "not_found");
+    expect(await screen.findByText("Person not found")).toBeInTheDocument();
+  });
+
+  it("fails closed when the organization-scoped person lookup is forbidden", async () => {
+    await renderRoute("/institution/people/cross-org", {}, "forbidden");
+    expect(await screen.findByText("You don't have access to this page")).toBeInTheDocument();
   });
 });

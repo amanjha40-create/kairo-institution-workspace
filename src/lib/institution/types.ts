@@ -301,6 +301,195 @@ export interface InstitutionPeopleDirectory {
   limit: number;
 }
 
+export type StudentRosterImportState =
+  | "uploaded"
+  | "parsing"
+  | "mapping_required"
+  | "ready_for_review"
+  | "importing"
+  | "completed"
+  | "completed_with_errors"
+  | "failed";
+
+export type StudentRosterRowDisposition =
+  | "valid_new"
+  | "valid_update"
+  | "duplicate"
+  | "invalid"
+  | "skipped";
+
+export type StudentRosterRowApplicationStatus =
+  | "pending"
+  | "ignored"
+  | "created"
+  | "updated"
+  | "failed";
+
+export interface StudentRosterImportCounts {
+  totalRows: number;
+  validNew: number;
+  validUpdate: number;
+  duplicate: number;
+  invalid: number;
+  skipped: number;
+  created: number;
+  updated: number;
+  failed: number;
+}
+
+export interface StudentRosterSourceColumn {
+  original: string;
+  normalized: string;
+}
+
+export interface StudentRosterMapping {
+  sourceColumns: StudentRosterSourceColumn[];
+  mappings: Record<string, string>;
+  unmappedSourceColumns: string[];
+  missingRequiredMappings: string[];
+  ambiguousMappings: string[];
+  warnings: string[];
+}
+
+export interface StudentRosterRowIssue {
+  code: string;
+  field?: string | null;
+  message: string;
+  rowNumber: number;
+}
+
+export interface StudentRosterImportRow {
+  rowNumber: number;
+  rawValues: Record<string, unknown>;
+  normalizedValues: Record<string, unknown>;
+  disposition: StudentRosterRowDisposition;
+  validationErrors: StudentRosterRowIssue[];
+  primaryIdentifier?: string | null;
+  matchedOrganizationPersonId?: string | null;
+  resultOrganizationPersonId?: string | null;
+  applicationStatus: StudentRosterRowApplicationStatus;
+  applicationErrors: StudentRosterRowIssue[];
+  appliedAt?: string | null;
+}
+
+export interface StudentRosterUploader {
+  userId: string;
+  displayName: string;
+  email: string;
+}
+
+export interface StudentRosterAuditEvent {
+  eventId: string;
+  action: string;
+  organizationPersonId?: string | null;
+  rowId?: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface StudentRosterImport {
+  id: string;
+  sourceFormat: string;
+  originalFilename: string;
+  state: StudentRosterImportState;
+  selectedSheetName?: string | null;
+  selectedSheetWarning?: string | null;
+  mapping: StudentRosterMapping;
+  counts: StudentRosterImportCounts;
+  rows: StudentRosterImportRow[];
+  uploader?: StudentRosterUploader | null;
+  auditEvents: StudentRosterAuditEvent[];
+  confirmedAt?: string | null;
+  completedAt?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  parsedAt?: string | null;
+  createdAt: string;
+}
+
+export interface StudentRosterImportSummary {
+  id: string;
+  sourceFormat: string;
+  originalFilename: string;
+  state: StudentRosterImportState;
+  counts: StudentRosterImportCounts;
+  uploader: StudentRosterUploader;
+  parsedAt?: string | null;
+  confirmedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export interface StudentRosterImportList {
+  items: StudentRosterImportSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
+}
+
+export interface StudentRosterImportRowList {
+  items: StudentRosterImportRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
+}
+
+export interface StudentRosterPerson {
+  id: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  rosterData: Record<string, unknown>;
+  sourceStatus: "organization_provided";
+  verified: false;
+  sourceImportId?: string | null;
+  sourceRowNumber?: number | null;
+  importedByUserId?: string | null;
+  importedAt: string;
+}
+
+export interface OrganizationPersonReference {
+  id: string;
+  fullName: string;
+  resolutionMethod?: string | null;
+  sourceImportId?: string | null;
+}
+
+export type InstitutionPersonDetailResult =
+  | { kind: "institution"; person: Person }
+  | { kind: "organization_roster"; person: StudentRosterPerson };
+
+export interface StudentRosterDirectory {
+  items: StudentRosterPerson[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offset: number;
+  limit: number;
+}
+
+export interface StudentRosterMappingAssignment {
+  sourceColumn: string;
+  canonicalField: string | null;
+}
+
+export interface StudentRosterErrorReport {
+  blob: Blob;
+  filename: string;
+}
+
+export interface StudentRosterTemplateDownload {
+  blob: Blob;
+  filename: string;
+}
+
 export interface TeamMember {
   id: string;
   name: string;

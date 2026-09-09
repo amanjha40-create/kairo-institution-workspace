@@ -21,7 +21,17 @@ import type {
   InternalNote,
   InstitutionWorkspaceBootstrap,
   MagicLinkRequest,
+  OrganizationPersonReference,
   Person,
+  StudentRosterDirectory,
+  StudentRosterErrorReport,
+  StudentRosterImport,
+  StudentRosterImportList,
+  StudentRosterImportRow,
+  StudentRosterImportRowList,
+  StudentRosterImportState,
+  StudentRosterMappingAssignment,
+  StudentRosterTemplateDownload,
   TimelineEvent,
   TeamInvitation,
   TeamMember,
@@ -536,6 +546,152 @@ interface BackendInstitutionPersonDetailResponse extends BackendInstitutionPerso
   }>;
 }
 
+interface BackendRosterCountsResponse {
+  total_rows: number;
+  valid_new: number;
+  valid_update: number;
+  duplicate: number;
+  invalid: number;
+  skipped: number;
+  created: number;
+  updated: number;
+  failed: number;
+}
+
+interface BackendRosterUploaderResponse {
+  user_id: string;
+  display_name: string;
+  email: string;
+}
+
+interface BackendRosterRowIssueResponse {
+  code: string;
+  field?: string | null;
+  message: string;
+  row_number: number;
+}
+
+interface BackendRosterRowResponse {
+  row_number: number;
+  raw_values: Record<string, unknown>;
+  normalized_values: Record<string, unknown>;
+  disposition: StudentRosterImportRow["disposition"];
+  validation_errors: BackendRosterRowIssueResponse[];
+  primary_identifier?: string | null;
+  matched_organization_person_id?: string | null;
+  result_organization_person_id?: string | null;
+  application_status: StudentRosterImportRow["applicationStatus"];
+  application_errors: BackendRosterRowIssueResponse[];
+  applied_at?: string | null;
+}
+
+interface BackendRosterMappingResponse {
+  source_columns: Array<{ original: string; normalized: string }>;
+  mappings: Record<string, string>;
+  unmapped_source_columns: string[];
+  missing_required_mappings: string[];
+  ambiguous_mappings: string[];
+  warnings: string[];
+}
+
+interface BackendRosterPreviewResponse {
+  import_id: string;
+  roster_type: "student";
+  source_format: string;
+  original_filename: string;
+  state: StudentRosterImportState;
+  selected_sheet_name?: string | null;
+  selected_sheet_warning?: string | null;
+  mapping: BackendRosterMappingResponse;
+  counts: BackendRosterCountsResponse;
+  rows: BackendRosterRowResponse[];
+  uploader?: BackendRosterUploaderResponse | null;
+  audit_events?: Array<{
+    event_id: string;
+    action: string;
+    organization_person_id?: string | null;
+    row_id?: string | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+  }>;
+  confirmed_at?: string | null;
+  completed_at?: string | null;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  parsed_at?: string | null;
+  created_at: string;
+}
+
+interface BackendRosterImportSummaryResponse {
+  import_id: string;
+  roster_type: "student";
+  source_format: string;
+  original_filename: string;
+  state: StudentRosterImportState;
+  counts: BackendRosterCountsResponse;
+  uploader: BackendRosterUploaderResponse;
+  parsed_at?: string | null;
+  confirmed_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+interface BackendRosterImportListResponse {
+  items: BackendRosterImportSummaryResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  offset: number;
+  limit: number;
+}
+
+interface BackendRosterRowListResponse {
+  items: BackendRosterRowResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  offset: number;
+  limit: number;
+}
+
+interface BackendStudentRosterPersonResponse {
+  organization_person_id: string;
+  roster_type: "student";
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  roster_data: Record<string, unknown>;
+  source_status: "organization_provided";
+  verified: false;
+  source_import_id?: string | null;
+  source_row_number?: number | null;
+  imported_by_user_id?: string | null;
+  imported_at: string;
+}
+
+interface BackendStudentRosterListResponse {
+  items: BackendStudentRosterPersonResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  offset: number;
+  limit: number;
+}
+
+interface BackendOrganizationPersonDetailResponse {
+  public_id: string;
+  summary: {
+    full_name: string;
+  };
+  organization_relationship: {
+    resolution_method?: string | null;
+    resolution_metadata?: Record<string, unknown>;
+  };
+}
+
 interface ApiRequestOptions extends RequestInit {
   invalidCredentials?: boolean;
   unauthorizedUiMessage?: string;
@@ -616,6 +772,25 @@ export interface InstitutionPeopleQueryInput {
 }
 
 export interface InstitutionNotificationsQueryInput {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface StudentRosterListQueryInput {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface StudentRosterImportListQueryInput {
+  state?: StudentRosterImportState;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface StudentRosterImportRowListQueryInput {
+  disposition?: StudentRosterImportRow["disposition"];
+  applicationStatus?: StudentRosterImportRow["applicationStatus"];
   page?: number;
   pageSize?: number;
 }
@@ -758,10 +933,11 @@ async function apiRequest<T>(
   accessToken?: string,
 ): Promise<T> {
   const { invalidCredentials, unauthorizedUiMessage, headers, ...init } = options;
+  const isMultipartBody = typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(buildApiUrl(path, "Institution authentication"), {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(!isMultipartBody ? { "Content-Type": "application/json" } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...headers,
     },
@@ -776,6 +952,30 @@ async function apiRequest<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function apiBlobRequest(
+  path: string,
+  options: ApiRequestOptions = {},
+  accessToken?: string,
+): Promise<{ blob: Blob; contentDisposition: string | null }> {
+  const { invalidCredentials, unauthorizedUiMessage, headers, ...init } = options;
+  const response = await fetch(buildApiUrl(path, "Institution authentication"), {
+    ...init,
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw await parseError(response, { invalidCredentials, unauthorizedUiMessage });
+  }
+
+  return {
+    blob: await response.blob(),
+    contentDisposition: response.headers.get("Content-Disposition"),
+  };
 }
 
 function mapOrganizationMember(payload: BackendOrganizationMemberResponse): TeamMember {
@@ -863,6 +1063,102 @@ function mapInstitutionAccountSessions(
     browser: session.browser,
     location: session.location,
   }));
+}
+
+function mapRosterCounts(payload: BackendRosterCountsResponse) {
+  return {
+    totalRows: payload.total_rows,
+    validNew: payload.valid_new,
+    validUpdate: payload.valid_update,
+    duplicate: payload.duplicate,
+    invalid: payload.invalid,
+    skipped: payload.skipped,
+    created: payload.created,
+    updated: payload.updated,
+    failed: payload.failed,
+  };
+}
+
+function mapRosterUploader(payload: BackendRosterUploaderResponse) {
+  return {
+    userId: payload.user_id,
+    displayName: payload.display_name,
+    email: payload.email,
+  };
+}
+
+function mapRosterRowIssue(payload: BackendRosterRowIssueResponse) {
+  return {
+    code: payload.code,
+    field: payload.field,
+    message: payload.message,
+    rowNumber: payload.row_number,
+  };
+}
+
+function mapRosterRow(payload: BackendRosterRowResponse): StudentRosterImportRow {
+  return {
+    rowNumber: payload.row_number,
+    rawValues: payload.raw_values,
+    normalizedValues: payload.normalized_values,
+    disposition: payload.disposition,
+    validationErrors: payload.validation_errors.map(mapRosterRowIssue),
+    primaryIdentifier: payload.primary_identifier,
+    matchedOrganizationPersonId: payload.matched_organization_person_id,
+    resultOrganizationPersonId: payload.result_organization_person_id,
+    applicationStatus: payload.application_status,
+    applicationErrors: payload.application_errors.map(mapRosterRowIssue),
+    appliedAt: payload.applied_at,
+  };
+}
+
+function mapStudentRosterImport(payload: BackendRosterPreviewResponse): StudentRosterImport {
+  return {
+    id: payload.import_id,
+    sourceFormat: payload.source_format,
+    originalFilename: payload.original_filename,
+    state: payload.state,
+    selectedSheetName: payload.selected_sheet_name,
+    selectedSheetWarning: payload.selected_sheet_warning,
+    mapping: {
+      sourceColumns: payload.mapping.source_columns,
+      mappings: payload.mapping.mappings,
+      unmappedSourceColumns: payload.mapping.unmapped_source_columns,
+      missingRequiredMappings: payload.mapping.missing_required_mappings,
+      ambiguousMappings: payload.mapping.ambiguous_mappings,
+      warnings: payload.mapping.warnings,
+    },
+    counts: mapRosterCounts(payload.counts),
+    rows: payload.rows.map(mapRosterRow),
+    uploader: payload.uploader ? mapRosterUploader(payload.uploader) : null,
+    auditEvents: (payload.audit_events ?? []).map((event) => ({
+      eventId: event.event_id,
+      action: event.action,
+      organizationPersonId: event.organization_person_id,
+      rowId: event.row_id,
+      metadata: event.metadata,
+      createdAt: event.created_at,
+    })),
+    confirmedAt: payload.confirmed_at,
+    completedAt: payload.completed_at,
+    failureCode: payload.failure_code,
+    failureMessage: payload.failure_message,
+    parsedAt: payload.parsed_at,
+    createdAt: payload.created_at,
+  };
+}
+
+function filenameFromContentDisposition(value: string | null, fallback: string) {
+  if (!value) return fallback;
+  const encoded = value.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return fallback;
+    }
+  }
+  return value.match(/filename="?([^";]+)"?/i)?.[1] || fallback;
 }
 
 function unwrapListResponse<T>(payload: T[] | BackendPageResponse<T>) {
@@ -2319,6 +2615,27 @@ export async function getInstitutionOrganizationPerson(
   });
 }
 
+export async function getInstitutionOrganizationPersonReference(
+  orgPublicId: string,
+  personPublicId: string,
+): Promise<OrganizationPersonReference> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendOrganizationPersonDetailResponse>(
+      `/api/v1/organizations/${orgPublicId}/people/${personPublicId}`,
+      { method: "GET" },
+      accessToken,
+    );
+    const sourceImportId = payload.organization_relationship.resolution_metadata?.source_import_id;
+
+    return {
+      id: payload.public_id,
+      fullName: payload.summary.full_name,
+      resolutionMethod: payload.organization_relationship.resolution_method,
+      sourceImportId: typeof sourceImportId === "string" ? sourceImportId : null,
+    };
+  });
+}
+
 export async function getInstitutionOrganizationPersonVerificationHistory(
   orgPublicId: string,
   personPublicId: string,
@@ -2367,6 +2684,217 @@ export async function getInstitutionOrganizationPersonPassportSummary(
     );
 
     return mapInstitutionPassportSummary(payload);
+  });
+}
+
+export async function uploadInstitutionStudentRoster(orgPublicId: string, file: File) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const body = new FormData();
+    body.append("roster_type", "student");
+    body.append("file", file, file.name);
+    const payload = await apiRequest<BackendRosterPreviewResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports`,
+      { method: "POST", body },
+      accessToken,
+    );
+    return mapStudentRosterImport(payload);
+  });
+}
+
+export async function getInstitutionStudentRosterImport(
+  orgPublicId: string,
+  importPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendRosterPreviewResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports/${importPublicId}`,
+      { method: "GET" },
+      accessToken,
+    );
+    return mapStudentRosterImport(payload);
+  });
+}
+
+export async function updateInstitutionStudentRosterMapping(
+  orgPublicId: string,
+  importPublicId: string,
+  assignments: StudentRosterMappingAssignment[],
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendRosterPreviewResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports/${importPublicId}/mapping`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          assignments: assignments.map((assignment) => ({
+            source_column: assignment.sourceColumn,
+            canonical_field: assignment.canonicalField,
+          })),
+        }),
+      },
+      accessToken,
+    );
+    return mapStudentRosterImport(payload);
+  });
+}
+
+export async function confirmInstitutionStudentRosterImport(
+  orgPublicId: string,
+  importPublicId: string,
+) {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiRequest<BackendRosterPreviewResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports/${importPublicId}/confirm`,
+      { method: "POST" },
+      accessToken,
+    );
+    return mapStudentRosterImport(payload);
+  });
+}
+
+export async function getInstitutionStudentRosterImportRows(
+  orgPublicId: string,
+  importPublicId: string,
+  input: StudentRosterImportRowListQueryInput = {},
+): Promise<StudentRosterImportRowList> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const query = buildQueryString({
+      disposition: input.disposition,
+      application_status: input.applicationStatus,
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 25,
+    });
+    const payload = await apiRequest<BackendRosterRowListResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports/${importPublicId}/rows${query}`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      items: payload.items.map(mapRosterRow),
+      total: payload.total,
+      page: payload.page,
+      pageSize: payload.page_size,
+      totalPages: payload.total_pages,
+      offset: payload.offset,
+      limit: payload.limit,
+    };
+  });
+}
+
+export async function getInstitutionStudentRosterImports(
+  orgPublicId: string,
+  input: StudentRosterImportListQueryInput = {},
+): Promise<StudentRosterImportList> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const query = buildQueryString({
+      roster_type: "student",
+      state: input.state,
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 25,
+    });
+    const payload = await apiRequest<BackendRosterImportListResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster-imports${query}`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      items: payload.items.map((item) => ({
+        id: item.import_id,
+        sourceFormat: item.source_format,
+        originalFilename: item.original_filename,
+        state: item.state,
+        counts: mapRosterCounts(item.counts),
+        uploader: mapRosterUploader(item.uploader),
+        parsedAt: item.parsed_at,
+        confirmedAt: item.confirmed_at,
+        completedAt: item.completed_at,
+        createdAt: item.created_at,
+      })),
+      total: payload.total,
+      page: payload.page,
+      pageSize: payload.page_size,
+      totalPages: payload.total_pages,
+      offset: payload.offset,
+      limit: payload.limit,
+    };
+  });
+}
+
+export async function downloadInstitutionStudentRosterErrorReport(
+  orgPublicId: string,
+  importPublicId: string,
+): Promise<StudentRosterErrorReport> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiBlobRequest(
+      `/api/v1/organizations/${orgPublicId}/roster-imports/${importPublicId}/errors.csv`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      blob: payload.blob,
+      filename: filenameFromContentDisposition(
+        payload.contentDisposition,
+        `student-roster-${importPublicId}-errors.csv`,
+      ),
+    };
+  });
+}
+
+export async function downloadInstitutionStudentRosterTemplate(
+  orgPublicId: string,
+): Promise<StudentRosterTemplateDownload> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiBlobRequest(
+      `/api/v1/organizations/${orgPublicId}/roster/templates/student.csv`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      blob: payload.blob,
+      filename: filenameFromContentDisposition(
+        payload.contentDisposition,
+        "kairo-student-roster-template.csv",
+      ),
+    };
+  });
+}
+
+export async function getInstitutionStudentRoster(
+  orgPublicId: string,
+  input: StudentRosterListQueryInput = {},
+): Promise<StudentRosterDirectory> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const query = buildQueryString({
+      search: input.search?.trim() || undefined,
+      page: input.page ?? 1,
+      page_size: input.pageSize ?? 25,
+    });
+    const payload = await apiRequest<BackendStudentRosterListResponse>(
+      `/api/v1/organizations/${orgPublicId}/roster/students${query}`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      items: payload.items.map((person) => ({
+        id: person.organization_person_id,
+        fullName: person.full_name,
+        email: person.email,
+        phone: person.phone,
+        rosterData: person.roster_data,
+        sourceStatus: person.source_status,
+        verified: person.verified,
+        sourceImportId: person.source_import_id,
+        sourceRowNumber: person.source_row_number,
+        importedByUserId: person.imported_by_user_id,
+        importedAt: person.imported_at,
+      })),
+      total: payload.total,
+      page: payload.page,
+      pageSize: payload.page_size,
+      totalPages: payload.total_pages,
+      offset: payload.offset,
+      limit: payload.limit,
+    };
   });
 }
 
