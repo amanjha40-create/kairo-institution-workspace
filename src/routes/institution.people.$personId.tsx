@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import {
-  getInstitutionPersonDetail,
+  getInstitutionPerson,
   getInstitutionPersonCredentials,
   getInstitutionPersonPassportSummary,
   getInstitutionPersonVerificationHistory,
@@ -12,7 +12,6 @@ import { useInstitutionAuth } from "@/lib/institution/auth";
 import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
 import { formatDate, formatDateTime } from "@/lib/institution/format";
 import { mapCredentialStatusLabel } from "@/lib/institution/people";
-import { rosterValue } from "@/lib/institution/roster";
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import {
@@ -23,26 +22,14 @@ import {
   ServiceUnavailableState,
 } from "@/components/institution/PageStates";
 import { InstitutionStatusBadge, TrustStatusBadge } from "@/components/institution/StatusBadge";
-import { OrganizationProvidedBadge } from "@/components/institution/roster/StudentRosterBadges";
 import { Button } from "@/components/ui/button";
-import type { StudentRosterPerson } from "@/lib/institution/types";
 
 export const Route = createFileRoute("/institution/people/$personId")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    rosterImportId: typeof search.rosterImportId === "string" ? search.rosterImportId : undefined,
-    rosterRowNumber:
-      typeof search.rosterRowNumber === "number" && Number.isInteger(search.rosterRowNumber)
-        ? search.rosterRowNumber
-        : typeof search.rosterRowNumber === "string" && /^\d+$/.test(search.rosterRowNumber)
-          ? Number(search.rosterRowNumber)
-          : undefined,
-  }),
   component: PersonDetailPage,
 });
 
 function PersonDetailPage() {
   const { personId } = Route.useParams();
-  const { rosterImportId, rosterRowNumber } = Route.useSearch();
   const navigate = useNavigate();
   const { session } = useInstitutionAuth();
   const permissions = getInstitutionPermissions(session);
@@ -55,10 +42,7 @@ function PersonDetailPage() {
         throw new Error("An active institution context is required.");
       }
 
-      return getInstitutionPersonDetail(organizationId, personId, {
-        importId: rosterImportId,
-        rowNumber: rosterRowNumber,
-      });
+      return getInstitutionPerson(organizationId, personId);
     },
     enabled: Boolean(organizationId) && permissions.canViewPeople,
   });
@@ -72,10 +56,7 @@ function PersonDetailPage() {
 
       return getInstitutionPersonVerificationHistory(organizationId, personId);
     },
-    enabled:
-      Boolean(organizationId) &&
-      permissions.canViewPeople &&
-      detailQuery.data?.kind === "institution",
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
   });
 
   const credentialsQuery = useQuery({
@@ -87,10 +68,7 @@ function PersonDetailPage() {
 
       return getInstitutionPersonCredentials(organizationId, personId);
     },
-    enabled:
-      Boolean(organizationId) &&
-      permissions.canViewPeople &&
-      detailQuery.data?.kind === "institution",
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
   });
 
   const passportSummaryQuery = useQuery({
@@ -102,10 +80,7 @@ function PersonDetailPage() {
 
       return getInstitutionPersonPassportSummary(organizationId, personId);
     },
-    enabled:
-      Boolean(organizationId) &&
-      permissions.canViewPeople &&
-      detailQuery.data?.kind === "institution",
+    enabled: Boolean(organizationId) && permissions.canViewPeople && Boolean(detailQuery.data),
   });
 
   if (!permissions.canViewPeople) {
@@ -157,16 +132,7 @@ function PersonDetailPage() {
 
   if (!detailQuery.data) return null;
 
-  if (detailQuery.data.kind === "organization_roster") {
-    return (
-      <RosterOnlyPersonDetail
-        person={detailQuery.data.person}
-        institutionName={session?.institutionName ?? "Not available"}
-      />
-    );
-  }
-
-  const person = detailQuery.data.person;
+  const person = detailQuery.data;
   const institutionName =
     person.relationship.institutionName !== "—"
       ? person.relationship.institutionName
@@ -457,72 +423,6 @@ function PersonDetailPage() {
             ))}
           </ol>
         )}
-      </Section>
-    </div>
-  );
-}
-
-function RosterOnlyPersonDetail({
-  person,
-  institutionName,
-}: {
-  person: StudentRosterPerson;
-  institutionName: string;
-}) {
-  const value = (field: string) => rosterValue(person.rosterData, field);
-
-  return (
-    <div className="space-y-6">
-      <Link
-        to="/institution/people/students"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" aria-hidden="true" /> Student roster
-      </Link>
-
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-white p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground">{person.fullName}</h1>
-          <div className="mt-2">
-            <OrganizationProvidedBadge />
-          </div>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          Imported {formatDateTime(person.importedAt)}
-        </div>
-      </div>
-
-      <Section title="Institution record">
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <FieldCell label="Institution" value={institutionName} />
-          <FieldCell label="Student ID" value={value("student_id")} />
-          <FieldCell label="Roll number" value={value("roll_number")} />
-          <FieldCell label="Institutional email" value={person.email || "Not available"} />
-          <FieldCell label="Phone" value={person.phone || "Not available"} />
-          <FieldCell label="Degree" value={value("degree")} />
-          <FieldCell label="Programme" value={value("program")} />
-          <FieldCell label="Specialization" value={value("specialization")} />
-          <FieldCell label="Department" value={value("department")} />
-          <FieldCell label="Admission" value={value("admission_date")} />
-          <FieldCell label="Graduation" value={value("graduation_date")} />
-          <FieldCell label="Enrollment" value={value("enrollment_status")} />
-          <FieldCell label="Campus" value={value("campus")} />
-          <FieldCell label="Cohort" value={value("cohort")} />
-        </dl>
-        <p className="mt-4 rounded-md border border-border bg-secondary/50 p-3 text-xs text-muted-foreground">
-          This record was supplied by the institution and is not presented as independently verified
-          by Kairo.
-        </p>
-      </Section>
-
-      <Section title="Kairo profile connection">
-        <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
-          <div className="font-medium">Candidate-owned information unavailable</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Trust Passport, professional information, credentials, verification history, and
-            candidate documents are not shown for this organization-provided roster record.
-          </p>
-        </div>
       </Section>
     </div>
   );

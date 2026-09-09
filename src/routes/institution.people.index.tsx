@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Search, Upload, UsersRound } from "lucide-react";
+import { Search } from "lucide-react";
 import { getInstitutionPeople } from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { ProfessionalInfoValue } from "@/components/institution/ProfessionalInfoValue";
@@ -9,7 +9,6 @@ import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institutio
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
 import { institutionQueryKeys } from "@/lib/institution/query-keys";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -104,29 +103,11 @@ function PeoplePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">People</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            View students and alumni connected to your institution.
-          </p>
-        </div>
-        {permissions.canImportStudentRoster && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/institution/people/students">
-                <UsersRound className="h-4 w-4" aria-hidden="true" />
-                Student roster
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to="/institution/people/students/import">
-                <Upload className="h-4 w-4" aria-hidden="true" />
-                Import Students
-              </Link>
-            </Button>
-          </div>
-        )}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">People</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          View students and alumni connected to your institution.
+        </p>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -239,7 +220,6 @@ function PeoplePage() {
                       <Link
                         to="/institution/people/$personId"
                         params={{ personId: person.id }}
-                        search={{ rosterImportId: undefined, rosterRowNumber: undefined }}
                         className="font-medium text-foreground hover:text-[color:var(--kairo-navy)]"
                       >
                         {person.name}
@@ -283,7 +263,6 @@ function PeoplePage() {
                 key={person.id}
                 to="/institution/people/$personId"
                 params={{ personId: person.id }}
-                search={{ rosterImportId: undefined, rosterRowNumber: undefined }}
                 className="block rounded-lg border border-border bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
