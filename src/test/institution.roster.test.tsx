@@ -253,9 +253,12 @@ async function renderRosterRoute(
       blob: new Blob(["error"]),
       filename: "errors.csv",
     }),
+    getInstitutionStudentRosterTemplate: vi.fn().mockResolvedValue({
+      blob: new Blob(["Student ID,Full Name\n"], { type: "text/csv" }),
+      filename: "kairo-student-roster-template.csv",
+    }),
     ...options.api,
   };
-
   vi.doMock("@/lib/institution/api", () => api);
   vi.doMock("@/lib/institution/auth", () => ({
     InstitutionAuthProvider: ({ children }: { children: ReactNode }) => children,
@@ -348,10 +351,8 @@ describe("institution student roster import", () => {
     await renderRosterRoute("/institution/people/students/import");
     expect(await screen.findByRole("heading", { name: "Import Students" })).toBeInTheDocument();
     expect(screen.getByLabelText("Choose a CSV or XLSX file")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download template" })).toHaveAttribute(
-      "href",
-      "/templates/kairo-student-roster-template.csv",
-    );
+    expect(screen.getByRole("button", { name: "Download template" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download template" })).not.toBeInTheDocument();
   });
 
   it("shows backend preview counts, row dispositions, and structured row errors", async () => {

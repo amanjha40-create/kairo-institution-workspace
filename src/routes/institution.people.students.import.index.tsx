@@ -2,15 +2,15 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowLeft, Download, FileSpreadsheet, History, Upload } from "lucide-react";
-import { uploadInstitutionStudentRosterFile } from "@/lib/institution/api";
+import {
+  getInstitutionStudentRosterTemplate,
+  uploadInstitutionStudentRosterFile,
+} from "@/lib/institution/api";
 import { useInstitutionAuth } from "@/lib/institution/auth";
+import { downloadInstitutionFile } from "@/lib/institution/download";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import { getInstitutionPermissions } from "@/lib/institution/permissions";
-import {
-  formatFileSize,
-  STUDENT_ROSTER_TEMPLATE_PATH,
-  validateStudentRosterFile,
-} from "@/lib/institution/roster";
+import { formatFileSize, validateStudentRosterFile } from "@/lib/institution/roster";
 import {
   PermissionDeniedState,
   ServiceUnavailableState,
@@ -40,6 +40,13 @@ function StudentRosterImportPage() {
         params: { importId: result.id },
       });
     },
+  });
+  const templateMutation = useMutation({
+    mutationFn: async () => {
+      if (!organizationId) throw new Error("An active institution context is required.");
+      return getInstitutionStudentRosterTemplate(organizationId);
+    },
+    onSuccess: (file) => downloadInstitutionFile(file),
   });
 
   if (!permissions.canImportStudentRoster) return <PermissionDeniedState />;
@@ -132,21 +139,26 @@ function StudentRosterImportPage() {
             </div>
           )}
 
-          {(fileError || uploadMutation.isError) && (
+          {(fileError || uploadMutation.isError || templateMutation.isError) && (
             <div
               role="alert"
               aria-live="assertive"
               className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
             >
-              {fileError || getInstitutionErrorMessage(uploadMutation.error)}
+              {fileError ||
+                getInstitutionErrorMessage(uploadMutation.error ?? templateMutation.error)}
             </div>
           )}
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button variant="outline" asChild>
-              <a href={STUDENT_ROSTER_TEMPLATE_PATH} download>
-                <Download className="h-4 w-4" aria-hidden="true" /> Download template
-              </a>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => templateMutation.mutate()}
+              disabled={templateMutation.isPending}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {templateMutation.isPending ? "Preparing template…" : "Download template"}
             </Button>
             <Button
               onClick={() => file && uploadMutation.mutate(file)}

@@ -49,6 +49,7 @@ import {
   requestInstitutionVerificationInformation,
   requestPublicInstitutionVerificationClarificationByToken,
   downloadInstitutionStudentRosterErrorReport,
+  downloadInstitutionStudentRosterTemplate,
   updateInstitutionStudentRosterMapping,
   uploadInstitutionStudentRoster,
 } from "./backend";
@@ -82,6 +83,7 @@ import type {
   StudentRosterImportList,
   StudentRosterImportRowList,
   StudentRosterMappingAssignment,
+  StudentRosterTemplateDownload,
   TeamInvitation,
   TeamMember,
   TimelineEvent,
@@ -246,6 +248,7 @@ interface InstitutionRepository {
     organizationId: string,
     importId: string,
   ) => Promise<StudentRosterErrorReport>;
+  downloadStudentRosterTemplate: (organizationId: string) => Promise<StudentRosterTemplateDownload>;
 }
 
 interface PublicVerificationRepository {
@@ -956,6 +959,9 @@ function demoInstitutionRepository(): InstitutionRepository {
     async downloadStudentRosterErrorReport() {
       assertInstitutionBackend("Student roster imports");
     },
+    async downloadStudentRosterTemplate() {
+      assertInstitutionBackend("Student roster template");
+    },
   };
 }
 
@@ -1092,6 +1098,9 @@ function unavailableInstitutionRepository(): InstitutionRepository {
     },
     async downloadStudentRosterErrorReport() {
       assertInstitutionBackend("Student roster imports");
+    },
+    async downloadStudentRosterTemplate() {
+      assertInstitutionBackend("Student roster template");
     },
   };
 }
@@ -1278,6 +1287,9 @@ function backendInstitutionRepository(): InstitutionRepository {
     },
     async downloadStudentRosterErrorReport(organizationId, importId) {
       return downloadInstitutionStudentRosterErrorReport(organizationId, importId);
+    },
+    async downloadStudentRosterTemplate(organizationId) {
+      return downloadInstitutionStudentRosterTemplate(organizationId);
     },
   };
 }
@@ -1593,6 +1605,10 @@ export async function getInstitutionStudentRosterErrorReport(
   importId: string,
 ) {
   return institutionRepository.downloadStudentRosterErrorReport(organizationId, importId);
+}
+
+export async function getInstitutionStudentRosterTemplate(organizationId: string) {
+  return institutionRepository.downloadStudentRosterTemplate(organizationId);
 }
 
 export async function getInstitutionTeam(organizationId: string): Promise<InstitutionTeam> {

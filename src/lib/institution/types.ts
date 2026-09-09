@@ -485,6 +485,11 @@ export interface StudentRosterErrorReport {
   filename: string;
 }
 
+export interface StudentRosterTemplateDownload {
+  blob: Blob;
+  filename: string;
+}
+
 export interface TeamMember {
   id: string;
   name: string;

@@ -7,7 +7,6 @@ import type {
 } from "./types";
 
 export const STUDENT_ROSTER_MAX_FILE_BYTES = 5_000_000;
-export const STUDENT_ROSTER_TEMPLATE_PATH = "/templates/kairo-student-roster-template.csv";
 
 export const studentRosterCanonicalFields = [
   { value: "student_id", label: "Student ID" },

@@ -31,6 +31,7 @@ import type {
   StudentRosterImportRowList,
   StudentRosterImportState,
   StudentRosterMappingAssignment,
+  StudentRosterTemplateDownload,
   TimelineEvent,
   TeamInvitation,
   TeamMember,
@@ -2834,6 +2835,25 @@ export async function downloadInstitutionStudentRosterErrorReport(
       filename: filenameFromContentDisposition(
         payload.contentDisposition,
         `student-roster-${importPublicId}-errors.csv`,
+      ),
+    };
+  });
+}
+
+export async function downloadInstitutionStudentRosterTemplate(
+  orgPublicId: string,
+): Promise<StudentRosterTemplateDownload> {
+  return withInstitutionAccessToken(async (accessToken) => {
+    const payload = await apiBlobRequest(
+      `/api/v1/organizations/${orgPublicId}/roster/templates/student.csv`,
+      { method: "GET" },
+      accessToken,
+    );
+    return {
+      blob: payload.blob,
+      filename: filenameFromContentDisposition(
+        payload.contentDisposition,
+        "kairo-student-roster-template.csv",
       ),
     };
   });

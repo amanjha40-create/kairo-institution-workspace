@@ -386,4 +386,56 @@ describe("institution student roster backend contract", () => {
     expect(report.filename).toBe("roster-errors.csv");
     expect(await report.blob.text()).toContain("invalid_email");
   });
+
+  it("downloads the authenticated backend student template and preserves its filename", async () => {
+    const headers =
+      "Student ID,Full Name,Institution Email,Phone,Degree,Program,Specialization,Department,Admission Date,Graduation Date,Enrollment Status,Campus,Cohort\n";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(headers, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="backend-student-template.csv"',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { message: "Only owners or admins may download." } }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Template service unavailable." } }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const backend = await importBackend();
+
+    const template = await backend.downloadInstitutionStudentRosterTemplate("org_001");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.example.com/api/v1/organizations/org_001/roster/templates/student.csv",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer access_token_123" }),
+      }),
+    );
+    expect(template.filename).toBe("backend-student-template.csv");
+    expect(await template.blob.text()).toBe(headers);
+
+    await expect(backend.downloadInstitutionStudentRosterTemplate("org_001")).rejects.toMatchObject(
+      { code: "FORBIDDEN", status: 403 },
+    );
+    await expect(backend.downloadInstitutionStudentRosterTemplate("org_001")).rejects.toMatchObject(
+      { code: "SERVICE_UNAVAILABLE", status: 503 },
+    );
+  });
 });
