@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig } from "@/lib/institution/config";
-import { getInstitutionErrorMessage } from "@/lib/institution/errors";
+import { getInstitutionErrorMessage, isInstitutionError } from "@/lib/institution/errors";
 import {
   getInstitutionSignupDraft,
+  isAuthenticatedFirstWorkspaceOnboarding,
+  prepareAuthenticatedInstitutionOnboarding,
   submitInstitutionWorkspaceApplication,
   updateSignupAcknowledgements,
   type InstitutionSignupDraft,
@@ -37,14 +39,22 @@ const METHOD_LABEL: Record<VerificationMethod, string> = {
 
 function ReviewStep() {
   const navigate = useNavigate();
-  const { refreshSession } = useInstitutionAuth();
+  const { authenticated, bootstrap, hydrated, refreshSession } = useInstitutionAuth();
+  const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+    authenticated,
+    bootstrap,
+  );
   const [draft, setDraft] = useState<InstitutionSignupDraft | null>(null);
   const [ack, setAck] = useState({ terms: false, privacy: false, authority: false });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const d = getInstitutionSignupDraft();
+    if (!hydrated) return;
+    const d =
+      existingAccountOnboarding && bootstrap
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap)
+        : getInstitutionSignupDraft();
     if (!d) {
       navigate({ to: "/institution/signup/institution", replace: true });
       return;
@@ -55,7 +65,7 @@ function ReviewStep() {
       privacy: d.acceptedPrivacy,
       authority: d.acceptedAuthority,
     });
-  }, [navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, navigate]);
 
   if (!draft) return null;
 
@@ -81,6 +91,17 @@ function ReviewStep() {
       await refreshSession();
       navigate({ to: "/institution/signup/success" });
     } catch (err) {
+      if (existingAccountOnboarding && isInstitutionError(err) && err.status === 409) {
+        try {
+          const resumedSession = await refreshSession();
+          if (resumedSession) {
+            navigate({ to: "/institution/signup/success" });
+            return;
+          }
+        } catch {
+          // Keep the original conflict recoverable when bootstrap refresh is unavailable.
+        }
+      }
       setError(getInstitutionErrorMessage(err));
     } finally {
       setSubmitting(false);
@@ -91,7 +112,11 @@ function ReviewStep() {
     <SignupShell
       step="review"
       title="Review and submit"
-      description="Confirm your details before creating the workspace request."
+      description={
+        existingAccountOnboarding
+          ? "Confirm the institution details before setting up your first workspace."
+          : "Confirm your details before creating the workspace request."
+      }
     >
       <div className="space-y-5">
         {!institutionAppConfig.demoMode && !institutionAppConfig.backendConfigured && (
@@ -122,7 +147,14 @@ function ReviewStep() {
         </SummarySection>
 
         <SummarySection title="Verification">
-          <Row label="Method" value={METHOD_LABEL[draft.verification.method]} />
+          <Row
+            label="Method"
+            value={
+              existingAccountOnboarding
+                ? "Existing verified Kairo account"
+                : METHOD_LABEL[draft.verification.method]
+            }
+          />
           <Row label="Workspace status on submission" value={workspaceStatus} />
         </SummarySection>
 

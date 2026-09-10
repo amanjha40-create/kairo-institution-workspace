@@ -36,7 +36,7 @@ export interface InstitutionAuthAdapter {
 interface AuthContextValue extends InstitutionAuthState {
   hydrated: boolean;
   isDemoMode: boolean;
-  signIn: (email: string, password: string) => Promise<Session | null>;
+  signIn: (email: string, password: string) => Promise<InstitutionAuthState>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<Session | null>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -337,7 +337,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
     setBootstrap(state.bootstrap);
     setAuthenticated(state.authenticated);
     setAuthError(state.error);
-    return state.session;
+    return state;
   };
 
   const signOut = async () => {

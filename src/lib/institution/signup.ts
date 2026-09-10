@@ -10,6 +10,7 @@ import {
 } from "./backend";
 import { institutionAppConfig } from "./config";
 import { apiNotConfiguredError, isInstitutionError, validationError } from "./errors";
+import type { InstitutionWorkspaceBootstrap } from "./types";
 
 const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
 export type InstitutionType =
@@ -271,6 +272,72 @@ function persistDraft(draft: InstitutionSignupDraft): InstitutionSignupDraft {
   const next = { ...draft, updatedAt: new Date().toISOString() };
   safeWrite(DRAFT_KEY, toPersistedDraft(next));
   return next;
+}
+
+export function isAuthenticatedFirstWorkspaceOnboarding(
+  authenticated: boolean,
+  bootstrap: InstitutionWorkspaceBootstrap | null,
+) {
+  return (
+    authenticated &&
+    bootstrap?.state === "no_org" &&
+    bootstrap.activeOrganization === null &&
+    bootstrap.membershipRole === null
+  );
+}
+
+export function prepareAuthenticatedInstitutionOnboarding(
+  bootstrap: InstitutionWorkspaceBootstrap,
+): InstitutionSignupDraft {
+  if (!isAuthenticatedFirstWorkspaceOnboarding(true, bootstrap)) {
+    throw validationError("An authenticated account without a workspace is required.");
+  }
+
+  const current = getInstitutionSignupDraft() ?? emptyDraft();
+  volatileAdministratorSecrets = null;
+  volatileVerificationDraft = null;
+
+  return persistDraft({
+    ...current,
+    administrator: {
+      ...current.administrator,
+      fullName: bootstrap.currentUser.fullName?.trim() || current.administrator.fullName,
+      workEmail: bootstrap.currentUser.email,
+      password: "",
+      confirmPassword: "",
+    },
+    verification: {
+      method: "email",
+      // Password login is allowed only for backend-verified email accounts.
+      emailStatus: "verified",
+    },
+  });
+}
+
+function hasCompleteInstitutionDetails(draft: InstitutionSignupDraft) {
+  const institution = draft.institution;
+  return Boolean(
+    institution.name.trim() &&
+    institution.type === "University" &&
+    institution.website.trim() &&
+    institution.domain.trim() &&
+    institution.country.trim() &&
+    institution.city.trim() &&
+    institution.verificationEmail.trim(),
+  );
+}
+
+export function getAuthenticatedInstitutionOnboardingPath(
+  bootstrap: InstitutionWorkspaceBootstrap,
+): (typeof INSTITUTION_SIGNUP_ROUTES)[keyof typeof INSTITUTION_SIGNUP_ROUTES] {
+  const draft = prepareAuthenticatedInstitutionOnboarding(bootstrap);
+  if (!hasCompleteInstitutionDetails(draft)) {
+    return INSTITUTION_SIGNUP_ROUTES.institution;
+  }
+  if (!draft.administrator.jobTitle.trim() || !draft.administrator.authorized) {
+    return INSTITUTION_SIGNUP_ROUTES.admin;
+  }
+  return INSTITUTION_SIGNUP_ROUTES.review;
 }
 
 function hasStoredInstitutionSession() {

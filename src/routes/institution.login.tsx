@@ -5,7 +5,11 @@ import { KairoLogo } from "@/components/institution/Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig, institutionDemoModeEnabled } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
-import { getInstitutionSignupContinuationPath } from "@/lib/institution/signup";
+import {
+  getAuthenticatedInstitutionOnboardingPath,
+  getInstitutionSignupContinuationPath,
+  isAuthenticatedFirstWorkspaceOnboarding,
+} from "@/lib/institution/signup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,11 +58,17 @@ function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const nextSession = await signIn(email, password);
+      const nextState = await signIn(email, password);
+      const isExistingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+        nextState.authenticated,
+        nextState.bootstrap,
+      );
       navigate({
-        to: nextSession
+        to: nextState.session
           ? (search.redirect ?? "/institution/verifications")
-          : getInstitutionSignupContinuationPath(),
+          : isExistingAccountOnboarding && nextState.bootstrap
+            ? getAuthenticatedInstitutionOnboardingPath(nextState.bootstrap)
+            : getInstitutionSignupContinuationPath(),
         replace: true,
       });
     } catch (err) {

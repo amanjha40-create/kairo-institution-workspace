@@ -6,10 +6,13 @@ import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import { CheckCircle2, Globe, Mail, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
   extractDomain,
+  getAuthenticatedInstitutionOnboardingPath,
   getInstitutionSignupDraft,
+  isAuthenticatedFirstWorkspaceOnboarding,
   recoverInstitutionEmailVerificationSession,
   requestInstitutionEmailVerification,
   updateInstitutionVerification,
@@ -37,6 +40,11 @@ export const Route = createFileRoute("/institution/signup/verify")({
 
 function VerifyStep() {
   const navigate = useNavigate();
+  const { authenticated, bootstrap, hydrated } = useInstitutionAuth();
+  const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+    authenticated,
+    bootstrap,
+  );
   const [method, setMethod] = useState<VerificationMethod>("email");
   const [emailStatus, setEmailStatus] = useState<EmailVerificationStatus>("not_started");
   const [institutionDomain, setInstitutionDomain] = useState("");
@@ -49,6 +57,12 @@ function VerifyStep() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hydrated) return;
+    if (existingAccountOnboarding && bootstrap) {
+      navigate({ to: getAuthenticatedInstitutionOnboardingPath(bootstrap), replace: true });
+      return;
+    }
+
     const syncDraftState = () => {
       const draft = getInstitutionSignupDraft();
       if (!draft) {
@@ -86,7 +100,7 @@ function VerifyStep() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, navigate]);
 
   const domainMatch =
     !!institutionDomain &&
@@ -136,6 +150,18 @@ function VerifyStep() {
     updateInstitutionVerification({ method, emailStatus, manualNote: note });
     navigate({ to: "/institution/signup/review" });
   };
+
+  if (!hydrated || existingAccountOnboarding) {
+    return (
+      <SignupShell
+        step="verify"
+        title="Preparing your institution workspace"
+        description="Your signed-in Kairo account is already verified."
+      >
+        <p className="text-sm text-muted-foreground">Continuing to workspace setup…</p>
+      </SignupShell>
+    );
+  }
 
   return (
     <SignupShell

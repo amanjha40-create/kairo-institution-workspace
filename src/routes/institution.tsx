@@ -1,7 +1,10 @@
 import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { InstitutionAuthProvider, useInstitutionAuth } from "@/lib/institution/auth";
-import { getInstitutionSignupContinuationPath } from "@/lib/institution/signup";
+import {
+  getAuthenticatedInstitutionOnboardingPath,
+  isAuthenticatedFirstWorkspaceOnboarding,
+} from "@/lib/institution/signup";
 import { ServiceUnavailableState } from "@/components/institution/PageStates";
 import { WorkspaceShell } from "@/components/institution/WorkspaceShell";
 
@@ -58,13 +61,17 @@ function InstitutionLayoutInner() {
       });
       return;
     }
-    if (!session && bootstrap?.state === "no_org") {
+    if (
+      !session &&
+      isAuthenticatedFirstWorkspaceOnboarding(authenticated, bootstrap) &&
+      bootstrap
+    ) {
       navigate({
-        to: getInstitutionSignupContinuationPath(),
+        to: getAuthenticatedInstitutionOnboardingPath(bootstrap),
         replace: true,
       });
     }
-  }, [authenticated, bootstrap?.state, hydrated, isPublic, navigate, path, session]);
+  }, [authenticated, bootstrap, hydrated, isPublic, navigate, path, session]);
 
   if (isAlwaysPublic || shouldExposePublicHome) return <Outlet />;
   if (!hydrated) {
