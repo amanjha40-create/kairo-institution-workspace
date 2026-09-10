@@ -39,10 +39,12 @@ const METHOD_LABEL: Record<VerificationMethod, string> = {
 
 function ReviewStep() {
   const navigate = useNavigate();
-  const { authenticated, bootstrap, hydrated, refreshSession } = useInstitutionAuth();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired, refreshSession } =
+    useInstitutionAuth();
   const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
     authenticated,
     bootstrap,
+    institutionOnboardingRequired,
   );
   const [draft, setDraft] = useState<InstitutionSignupDraft | null>(null);
   const [ack, setAck] = useState({ terms: false, privacy: false, authority: false });
@@ -53,7 +55,7 @@ function ReviewStep() {
     if (!hydrated) return;
     const d =
       existingAccountOnboarding && bootstrap
-        ? prepareAuthenticatedInstitutionOnboarding(bootstrap)
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired)
         : getInstitutionSignupDraft();
     if (!d) {
       navigate({ to: "/institution/signup/institution", replace: true });
@@ -65,7 +67,7 @@ function ReviewStep() {
       privacy: d.acceptedPrivacy,
       authority: d.acceptedAuthority,
     });
-  }, [bootstrap, existingAccountOnboarding, hydrated, navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired, navigate]);
 
   if (!draft) return null;
 

@@ -62,12 +62,17 @@ function LoginPage() {
       const isExistingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
         nextState.authenticated,
         nextState.bootstrap,
+        nextState.institutionOnboardingRequired,
       );
+      if (nextState.error) throw nextState.error;
       navigate({
         to: nextState.session
           ? (search.redirect ?? "/institution/verifications")
           : isExistingAccountOnboarding && nextState.bootstrap
-            ? getAuthenticatedInstitutionOnboardingPath(nextState.bootstrap)
+            ? getAuthenticatedInstitutionOnboardingPath(
+                nextState.bootstrap,
+                nextState.institutionOnboardingRequired,
+              )
             : getInstitutionSignupContinuationPath(),
         replace: true,
       });

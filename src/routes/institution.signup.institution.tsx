@@ -48,10 +48,12 @@ const schema = z.object({
 
 function InstitutionStep() {
   const navigate = useNavigate();
-  const { authenticated, bootstrap, hydrated } = useInstitutionAuth();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
   const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
     authenticated,
     bootstrap,
+    institutionOnboardingRequired,
   );
   const [form, setForm] = useState<InstitutionDetails>({
     name: "",
@@ -69,7 +71,7 @@ function InstitutionStep() {
     if (!hydrated) return;
     const draft =
       existingAccountOnboarding && bootstrap
-        ? prepareAuthenticatedInstitutionOnboarding(bootstrap)
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired)
         : (getInstitutionSignupDraft() ?? createInstitutionSignupDraft());
     setForm({
       ...draft.institution,
@@ -78,7 +80,7 @@ function InstitutionStep() {
           ? draft.institution.type
           : "",
     });
-  }, [bootstrap, existingAccountOnboarding, hydrated]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired]);
 
   const update = <K extends keyof InstitutionDetails>(key: K, value: InstitutionDetails[K]) => {
     setForm((f) => ({ ...f, [key]: value }));

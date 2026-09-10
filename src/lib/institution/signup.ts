@@ -1,7 +1,9 @@
 import {
+  createInstitutionOrganization,
   completeInstitutionWorkspaceOnboarding,
   completeOrganizationStaffSignup,
   getStoredInstitutionAuthTokens,
+  listCurrentOrganizationMemberships,
   refreshInstitutionUserSession,
   sendOrganizationStaffSignupEmail,
   startOrganizationStaffSignup,
@@ -9,7 +11,12 @@ import {
   verifyOrganizationStaffSignupEmail,
 } from "./backend";
 import { institutionAppConfig } from "./config";
-import { apiNotConfiguredError, isInstitutionError, validationError } from "./errors";
+import {
+  apiNotConfiguredError,
+  conflictError,
+  isInstitutionError,
+  validationError,
+} from "./errors";
 import type { InstitutionWorkspaceBootstrap } from "./types";
 
 const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
@@ -277,20 +284,24 @@ function persistDraft(draft: InstitutionSignupDraft): InstitutionSignupDraft {
 export function isAuthenticatedFirstWorkspaceOnboarding(
   authenticated: boolean,
   bootstrap: InstitutionWorkspaceBootstrap | null,
+  institutionOnboardingRequired = false,
 ) {
+  if (!authenticated || !bootstrap) return false;
+
   return (
-    authenticated &&
-    bootstrap?.state === "no_org" &&
-    bootstrap.activeOrganization === null &&
-    bootstrap.membershipRole === null
+    institutionOnboardingRequired ||
+    (bootstrap.state === "no_org" &&
+      bootstrap.activeOrganization === null &&
+      bootstrap.membershipRole === null)
   );
 }
 
 export function prepareAuthenticatedInstitutionOnboarding(
   bootstrap: InstitutionWorkspaceBootstrap,
+  institutionOnboardingRequired = false,
 ): InstitutionSignupDraft {
-  if (!isAuthenticatedFirstWorkspaceOnboarding(true, bootstrap)) {
-    throw validationError("An authenticated account without a workspace is required.");
+  if (!isAuthenticatedFirstWorkspaceOnboarding(true, bootstrap, institutionOnboardingRequired)) {
+    throw validationError("An authenticated account without an Institution workspace is required.");
   }
 
   const current = getInstitutionSignupDraft() ?? emptyDraft();
@@ -329,8 +340,9 @@ function hasCompleteInstitutionDetails(draft: InstitutionSignupDraft) {
 
 export function getAuthenticatedInstitutionOnboardingPath(
   bootstrap: InstitutionWorkspaceBootstrap,
+  institutionOnboardingRequired = false,
 ): (typeof INSTITUTION_SIGNUP_ROUTES)[keyof typeof INSTITUTION_SIGNUP_ROUTES] {
-  const draft = prepareAuthenticatedInstitutionOnboarding(bootstrap);
+  const draft = prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired);
   if (!hasCompleteInstitutionDetails(draft)) {
     return INSTITUTION_SIGNUP_ROUTES.institution;
   }
@@ -817,7 +829,7 @@ export async function submitInstitutionWorkspaceApplication(): Promise<Workspace
   }
 
   const accessToken = await resolveAccessTokenForOnboarding(draft);
-  await completeInstitutionWorkspaceOnboarding(accessToken, {
+  const payload = {
     name: draft.institution.name,
     organizationType: mapInstitutionTypeToOrganizationType(draft.institution.type),
     website: draft.institution.website || undefined,
@@ -825,7 +837,19 @@ export async function submitInstitutionWorkspaceApplication(): Promise<Workspace
       [draft.institution.city, draft.institution.country].filter(Boolean).join(", ") || undefined,
     workEmail: draft.institution.verificationEmail || draft.administrator.workEmail || undefined,
     domain: draft.institution.domain || undefined,
-  });
+  };
+  const memberships = await listCurrentOrganizationMemberships(accessToken);
+  if (memberships.some((membership) => membership.organizationType === "university")) {
+    throw conflictError(
+      "This account already belongs to an Institution workspace. Sign in again to continue.",
+    );
+  }
+
+  if (memberships.length > 0) {
+    await createInstitutionOrganization(accessToken, payload);
+  } else {
+    await completeInstitutionWorkspaceOnboarding(accessToken, payload);
+  }
 
   const application = buildApplication(draft, "verification_pending");
   safeWrite(APPLICATION_KEY, application);

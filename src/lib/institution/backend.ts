@@ -22,6 +22,7 @@ import type {
   InstitutionWorkspaceBootstrap,
   MagicLinkRequest,
   Person,
+  Role,
   TimelineEvent,
   TeamInvitation,
   TeamMember,
@@ -107,9 +108,20 @@ interface BackendOrganizationResponse {
   setup_completed_at: string | null;
   suspended_at: string | null;
   suspension_reason: string | null;
-  member_count?: number;
-  created_at?: string;
-  updated_at?: string;
+  verification_capabilities: string[];
+  my_role: Role;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CurrentOrganizationMembership {
+  publicId: string;
+  name: string;
+  organizationType: string;
+  role: Role;
+  setupCompletedAt: string | null;
+  suspendedAt: string | null;
 }
 
 interface BackendNotificationPreferenceResponse {
@@ -1810,6 +1822,29 @@ export async function getInstitutionWorkspaceBootstrap(accessToken: string) {
   return mapWorkspaceBootstrap(payload);
 }
 
+export async function listCurrentOrganizationMemberships(accessToken: string) {
+  const payload = await apiRequest<
+    BackendOrganizationResponse[] | BackendPageResponse<BackendOrganizationResponse>
+  >(
+    "/api/v1/organizations/me",
+    {
+      method: "GET",
+    },
+    accessToken,
+  );
+
+  return unwrapListResponse(payload).map(
+    (organization): CurrentOrganizationMembership => ({
+      publicId: organization.public_id,
+      name: organization.name,
+      organizationType: organization.organization_type,
+      role: organization.my_role,
+      setupCompletedAt: organization.setup_completed_at,
+      suspendedAt: organization.suspended_at,
+    }),
+  );
+}
+
 export async function getInstitutionOrganization(orgPublicId: string) {
   return withInstitutionAccessToken(async (accessToken) => {
     const payload = await apiRequest<BackendOrganizationResponse>(
@@ -2074,6 +2109,32 @@ export async function completeInstitutionWorkspaceOnboarding(
 ) {
   const response = await apiRequest<BackendOrganizationResponse>(
     "/api/v1/organizations/onboarding/complete",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: payload.name,
+        organization_type: payload.organizationType,
+        website: payload.website || null,
+        location: payload.location || null,
+        work_email: payload.workEmail || null,
+        domain: payload.domain || null,
+      }),
+    },
+    accessToken,
+  );
+
+  return {
+    publicId: response.public_id,
+    name: response.name,
+  };
+}
+
+export async function createInstitutionOrganization(
+  accessToken: string,
+  payload: InstitutionOnboardingPayload,
+) {
+  const response = await apiRequest<BackendOrganizationResponse>(
+    "/api/v1/organizations",
     {
       method: "POST",
       body: JSON.stringify({

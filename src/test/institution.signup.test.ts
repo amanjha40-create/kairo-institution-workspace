@@ -28,6 +28,32 @@ function noOrgBootstrap() {
   };
 }
 
+function employerBootstrap() {
+  return {
+    ...noOrgBootstrap(),
+    state: "ready" as const,
+    currentUser: {
+      ...noOrgBootstrap().currentUser,
+      activeOrganizationPublicId: "org_employer",
+    },
+    activeOrganization: {
+      publicId: "org_employer",
+      name: "Example Employer",
+      organizationType: "employer",
+      website: "https://employer.example",
+      location: "Delhi, India",
+      workEmail: "owner@example.edu",
+      domain: "employer.example",
+      verificationState: "verified" as const,
+      setupCompletedAt: "2026-09-01T00:00:00.000Z",
+      suspendedAt: null,
+    },
+    membershipRole: "owner" as const,
+    organizationVerificationState: "verified" as const,
+    setupCompleted: true,
+  };
+}
+
 async function importSignupModule(demoMode: "true" | "false") {
   vi.resetModules();
   vi.stubEnv("VITE_APP_ENV", "test");
@@ -63,6 +89,7 @@ describe("institution signup storage", () => {
         ...actual,
         getStoredInstitutionAuthTokens,
         completeInstitutionWorkspaceOnboarding,
+        listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([]),
       };
     });
 
@@ -305,6 +332,7 @@ describe("institution signup storage", () => {
         completeInstitutionWorkspaceOnboarding,
         completeOrganizationStaffSignup,
         getStoredInstitutionAuthTokens,
+        listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([]),
         sendOrganizationStaffSignupEmail,
         startOrganizationStaffSignup,
       };
@@ -340,6 +368,133 @@ describe("institution signup storage", () => {
     expect(startOrganizationStaffSignup).not.toHaveBeenCalled();
     expect(sendOrganizationStaffSignupEmail).not.toHaveBeenCalled();
     expect(completeOrganizationStaffSignup).not.toHaveBeenCalled();
+  });
+
+  it("creates an additional university organization for an authenticated employer-only account", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const createInstitutionOrganization = vi.fn().mockResolvedValue({
+      publicId: "org_university",
+      name: "Authorized University",
+    });
+    const completeInstitutionWorkspaceOnboarding = vi.fn();
+    const startOrganizationStaffSignup = vi.fn();
+    const listCurrentOrganizationMemberships = vi.fn().mockResolvedValue([
+      {
+        publicId: "org_employer",
+        name: "Example Employer",
+        organizationType: "employer",
+        role: "owner",
+        setupCompletedAt: "2026-09-01T00:00:00.000Z",
+        suspendedAt: null,
+      },
+    ]);
+
+    vi.doMock("@/lib/institution/backend", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/institution/backend")>(
+        "@/lib/institution/backend",
+      );
+      return {
+        ...actual,
+        createInstitutionOrganization,
+        completeInstitutionWorkspaceOnboarding,
+        getStoredInstitutionAuthTokens: vi.fn().mockReturnValue({
+          accessToken: "access_token_123",
+          refreshToken: "refresh_token_123",
+          tokenType: "bearer",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        }),
+        listCurrentOrganizationMemberships,
+        startOrganizationStaffSignup,
+      };
+    });
+
+    const signup = await import("@/lib/institution/signup");
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionDetails({
+      name: "Authorized University",
+      type: "University",
+      website: "https://university.example",
+      domain: "university.example",
+      country: "India",
+      city: "Delhi",
+      verificationEmail: "verification@university.example",
+    });
+    signup.updateInstitutionAdministrator({ jobTitle: "Owner", authorized: true });
+    signup.prepareAuthenticatedInstitutionOnboarding(employerBootstrap(), true);
+
+    await signup.submitInstitutionWorkspaceApplication();
+
+    expect(listCurrentOrganizationMemberships).toHaveBeenCalledWith("access_token_123");
+    expect(createInstitutionOrganization).toHaveBeenCalledTimes(1);
+    expect(createInstitutionOrganization).toHaveBeenCalledWith(
+      "access_token_123",
+      expect.objectContaining({
+        name: "Authorized University",
+        organizationType: "university",
+      }),
+    );
+    expect(completeInstitutionWorkspaceOnboarding).not.toHaveBeenCalled();
+    expect(startOrganizationStaffSignup).not.toHaveBeenCalled();
+  });
+
+  it("fails closed instead of creating a duplicate university organization", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_APP_ENV", "test");
+    vi.stubEnv("VITE_DEMO_MODE", "false");
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com");
+
+    const createInstitutionOrganization = vi.fn();
+    const completeInstitutionWorkspaceOnboarding = vi.fn();
+    vi.doMock("@/lib/institution/backend", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/institution/backend")>(
+        "@/lib/institution/backend",
+      );
+      return {
+        ...actual,
+        createInstitutionOrganization,
+        completeInstitutionWorkspaceOnboarding,
+        getStoredInstitutionAuthTokens: vi.fn().mockReturnValue({
+          accessToken: "access_token_123",
+          refreshToken: "refresh_token_123",
+          tokenType: "bearer",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        }),
+        listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([
+          {
+            publicId: "org_university",
+            name: "Existing University",
+            organizationType: "university",
+            role: "owner",
+            setupCompletedAt: "2026-09-01T00:00:00.000Z",
+            suspendedAt: null,
+          },
+        ]),
+      };
+    });
+
+    const signup = await import("@/lib/institution/signup");
+    signup.createInstitutionSignupDraft();
+    signup.updateInstitutionDetails({
+      name: "Duplicate University",
+      type: "University",
+      website: "https://duplicate.example",
+      domain: "duplicate.example",
+      country: "India",
+      city: "Delhi",
+      verificationEmail: "verification@duplicate.example",
+    });
+    signup.updateInstitutionAdministrator({ jobTitle: "Owner", authorized: true });
+    signup.prepareAuthenticatedInstitutionOnboarding(noOrgBootstrap());
+
+    await expect(signup.submitInstitutionWorkspaceApplication()).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(createInstitutionOrganization).not.toHaveBeenCalled();
+    expect(completeInstitutionWorkspaceOnboarding).not.toHaveBeenCalled();
   });
 
   it("preserves the complete email OTP and signup path for a new organization staff account", async () => {
@@ -383,6 +538,7 @@ describe("institution signup storage", () => {
         completeInstitutionWorkspaceOnboarding,
         completeOrganizationStaffSignup,
         getStoredInstitutionAuthTokens,
+        listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([]),
         sendOrganizationStaffSignupEmail,
         startOrganizationStaffSignup,
         verifyOrganizationStaffSignupEmail,
@@ -463,6 +619,7 @@ describe("institution signup storage", () => {
           ...actual,
           completeInstitutionWorkspaceOnboarding,
           getStoredInstitutionAuthTokens,
+          listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([]),
         };
       });
 

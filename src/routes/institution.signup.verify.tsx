@@ -40,10 +40,12 @@ export const Route = createFileRoute("/institution/signup/verify")({
 
 function VerifyStep() {
   const navigate = useNavigate();
-  const { authenticated, bootstrap, hydrated } = useInstitutionAuth();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
   const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
     authenticated,
     bootstrap,
+    institutionOnboardingRequired,
   );
   const [method, setMethod] = useState<VerificationMethod>("email");
   const [emailStatus, setEmailStatus] = useState<EmailVerificationStatus>("not_started");
@@ -59,7 +61,10 @@ function VerifyStep() {
   useEffect(() => {
     if (!hydrated) return;
     if (existingAccountOnboarding && bootstrap) {
-      navigate({ to: getAuthenticatedInstitutionOnboardingPath(bootstrap), replace: true });
+      navigate({
+        to: getAuthenticatedInstitutionOnboardingPath(bootstrap, institutionOnboardingRequired),
+        replace: true,
+      });
       return;
     }
 
@@ -100,7 +105,7 @@ function VerifyStep() {
     return () => {
       cancelled = true;
     };
-  }, [bootstrap, existingAccountOnboarding, hydrated, navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired, navigate]);
 
   const domainMatch =
     !!institutionDomain &&

@@ -39,7 +39,8 @@ function InstitutionLayout() {
 function InstitutionLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, hydrated, authenticated, bootstrap, error } = useInstitutionAuth();
+  const { session, hydrated, authenticated, bootstrap, institutionOnboardingRequired, error } =
+    useInstitutionAuth();
 
   const path = location.pathname;
   const isInstitutionHome = path === "/institution" || path === "/institution/";
@@ -63,15 +64,28 @@ function InstitutionLayoutInner() {
     }
     if (
       !session &&
-      isAuthenticatedFirstWorkspaceOnboarding(authenticated, bootstrap) &&
+      isAuthenticatedFirstWorkspaceOnboarding(
+        authenticated,
+        bootstrap,
+        institutionOnboardingRequired,
+      ) &&
       bootstrap
     ) {
       navigate({
-        to: getAuthenticatedInstitutionOnboardingPath(bootstrap),
+        to: getAuthenticatedInstitutionOnboardingPath(bootstrap, institutionOnboardingRequired),
         replace: true,
       });
     }
-  }, [authenticated, bootstrap, hydrated, isPublic, navigate, path, session]);
+  }, [
+    authenticated,
+    bootstrap,
+    hydrated,
+    institutionOnboardingRequired,
+    isPublic,
+    navigate,
+    path,
+    session,
+  ]);
 
   if (isAlwaysPublic || shouldExposePublicHome) return <Outlet />;
   if (!hydrated) {

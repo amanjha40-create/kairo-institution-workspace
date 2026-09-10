@@ -55,10 +55,12 @@ const newAccountSchema = administratorSchema
 
 function AdminStep() {
   const navigate = useNavigate();
-  const { authenticated, bootstrap, hydrated } = useInstitutionAuth();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
   const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
     authenticated,
     bootstrap,
+    institutionOnboardingRequired,
   );
   const [form, setForm] = useState<InstitutionAdministrator>({
     fullName: "",
@@ -75,14 +77,14 @@ function AdminStep() {
     if (!hydrated) return;
     const draft =
       existingAccountOnboarding && bootstrap
-        ? prepareAuthenticatedInstitutionOnboarding(bootstrap)
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired)
         : getInstitutionSignupDraft();
     if (!draft) {
       navigate({ to: "/institution/signup/institution", replace: true });
       return;
     }
     setForm(draft.administrator);
-  }, [bootstrap, existingAccountOnboarding, hydrated, navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired, navigate]);
 
   const update = <K extends keyof InstitutionAdministrator>(k: K, v: InstitutionAdministrator[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -103,7 +105,7 @@ function AdminStep() {
     setErrors({});
     updateInstitutionAdministrator(form);
     if (existingAccountOnboarding && bootstrap) {
-      prepareAuthenticatedInstitutionOnboarding(bootstrap);
+      prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired);
       navigate({ to: "/institution/signup/review" });
       return;
     }

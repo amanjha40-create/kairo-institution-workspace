@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderInstitutionRoute } from "@/test/router-test-utils";
+import type { InstitutionWorkspaceBootstrap } from "@/lib/institution/types";
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -65,12 +66,52 @@ function noOrgBootstrap() {
   };
 }
 
+function employerBootstrap(): InstitutionWorkspaceBootstrap {
+  return {
+    state: "ready",
+    currentUser: {
+      id: "u_priya",
+      email: "priya@example.com",
+      fullName: "Priya Menon",
+      role: "user",
+      activeOrganizationPublicId: "org_employer",
+    },
+    activeOrganization: {
+      publicId: "org_employer",
+      name: "Example Employer",
+      organizationType: "employer",
+      website: "https://employer.example",
+      location: "Delhi, India",
+      workEmail: "priya@example.com",
+      domain: "employer.example",
+      verificationState: "verified",
+      setupCompletedAt: "2026-09-01T00:00:00.000Z",
+      suspendedAt: null,
+    },
+    membershipRole: "owner",
+    organizationVerificationState: "verified",
+    organizationSuspended: false,
+    membershipSuspended: false,
+    setupCompleted: true,
+    permissionFlags: {
+      inviteCandidate: true,
+      modifyPerson: true,
+      modifyInvitation: true,
+      modifyVerification: true,
+      manageTeam: true,
+      saveSettings: true,
+      transferOwnership: true,
+    },
+  };
+}
+
 async function renderRoute(
   path: string,
   options?: {
     session?: ReturnType<typeof ownerSession> | ReturnType<typeof reviewerSession> | null;
     authenticated?: boolean;
-    bootstrap?: ReturnType<typeof noOrgBootstrap> | null;
+    bootstrap?: InstitutionWorkspaceBootstrap | null;
+    institutionOnboardingRequired?: boolean;
     demoMode?: "true" | "false";
     error?: { uiMessage: string } | null;
     completeInstitutionWorkspaceOnboarding?: ReturnType<typeof vi.fn>;
@@ -78,7 +119,8 @@ async function renderRoute(
     signInResult?: {
       session: ReturnType<typeof ownerSession> | null;
       authenticated: boolean;
-      bootstrap: ReturnType<typeof noOrgBootstrap> | null;
+      bootstrap: InstitutionWorkspaceBootstrap | null;
+      institutionOnboardingRequired?: boolean;
       error: { uiMessage: string } | null;
     };
   },
@@ -101,6 +143,7 @@ async function renderRoute(
       return {
         ...actual,
         completeInstitutionWorkspaceOnboarding,
+        listCurrentOrganizationMemberships: vi.fn().mockResolvedValue([]),
         getStoredInstitutionAuthTokens: vi.fn().mockReturnValue({
           accessToken: "access_token_123",
           refreshToken: "refresh_token_123",
@@ -115,6 +158,7 @@ async function renderRoute(
     session: options?.session ?? null,
     bootstrap: options?.bootstrap ?? null,
     authenticated: options?.authenticated ?? Boolean(options?.session),
+    institutionOnboardingRequired: options?.institutionOnboardingRequired ?? false,
     error: options?.error ?? null,
     hydrated: true,
     isDemoMode: (options?.demoMode ?? "true") === "true",
@@ -134,6 +178,8 @@ async function renderRoute(
       authState.session = options.signInResult.session;
       authState.authenticated = options.signInResult.authenticated;
       authState.bootstrap = options.signInResult.bootstrap;
+      authState.institutionOnboardingRequired =
+        options.signInResult.institutionOnboardingRequired ?? false;
       authState.error = options.signInResult.error;
       return options.signInResult;
     }
@@ -141,6 +187,7 @@ async function renderRoute(
       session: authState.session,
       authenticated: authState.authenticated,
       bootstrap: authState.bootstrap,
+      institutionOnboardingRequired: authState.institutionOnboardingRequired,
       error: authState.error,
     };
   });
@@ -323,6 +370,73 @@ describe("institution routing and permissions", () => {
     expect(
       screen.queryByRole("button", { name: "Send verification code" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("routes an employer-only account into Institution onboarding without restarting OTP", async () => {
+    window.localStorage.setItem(
+      "kairo.institution.signup.draft",
+      JSON.stringify({
+        id: "draft_employer_account",
+        institution: {
+          name: "",
+          type: "",
+          website: "",
+          domain: "",
+          country: "",
+          city: "",
+          verificationEmail: "",
+        },
+        administrator: {
+          fullName: "Stale Name",
+          jobTitle: "",
+          workEmail: "stale@example.edu",
+          authorized: false,
+        },
+        verification: {
+          method: "email",
+          emailStatus: "code_sent",
+          signupSessionId: "stale-signup-session",
+        },
+        acceptedTerms: false,
+        acceptedPrivacy: false,
+        acceptedAuthority: false,
+        updatedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    );
+    const bootstrap = employerBootstrap();
+    const authState = await renderRoute("/institution/login", {
+      authenticated: false,
+      bootstrap: null,
+      demoMode: "false",
+      signInResult: {
+        session: null,
+        authenticated: true,
+        bootstrap,
+        institutionOnboardingRequired: true,
+        error: null,
+      },
+    });
+
+    fireEvent.change(screen.getByLabelText("Work email"), {
+      target: { value: "priya@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "not-exposed-in-storage" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Set up your institution workspace" }),
+    ).toBeInTheDocument();
+    expect(authState.signIn).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("button", { name: "Send verification code" }),
+    ).not.toBeInTheDocument();
+    const persisted = JSON.parse(
+      window.localStorage.getItem("kairo.institution.signup.draft") as string,
+    );
+    expect(persisted.verification.signupSessionId).toBeUndefined();
+    expect(persisted.administrator.workEmail).toBe("priya@example.com");
   });
 
   it.each(["8a57e947-830b-456d-a290-8251c2be6bd1", "malformed-stale-session"])(
