@@ -6,10 +6,13 @@ import { getInstitutionErrorMessage } from "@/lib/institution/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import { CheckCircle2, Globe, Mail, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
   extractDomain,
+  getAuthenticatedInstitutionOnboardingPath,
   getInstitutionSignupDraft,
+  isAuthenticatedFirstWorkspaceOnboarding,
   recoverInstitutionEmailVerificationSession,
   requestInstitutionEmailVerification,
   updateInstitutionVerification,
@@ -22,13 +25,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/institution/signup/verify")({
   head: () => ({
     meta: [
-      { title: "Verify your institution — Kairo" },
+      { title: "Verify your institution — KairoID" },
       {
         name: "description",
         content:
-          "Verify your institution to activate authority to issue or revoke credentials on Kairo.",
+          "Verify your institution to activate authority to issue or revoke credentials on KairoID.",
       },
-      { property: "og:title", content: "Verify your institution — Kairo" },
+      { property: "og:title", content: "Verify your institution — KairoID" },
       { property: "og:description", content: "Choose a verification method for your institution." },
     ],
   }),
@@ -37,6 +40,13 @@ export const Route = createFileRoute("/institution/signup/verify")({
 
 function VerifyStep() {
   const navigate = useNavigate();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
+  const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+    authenticated,
+    bootstrap,
+    institutionOnboardingRequired,
+  );
   const [method, setMethod] = useState<VerificationMethod>("email");
   const [emailStatus, setEmailStatus] = useState<EmailVerificationStatus>("not_started");
   const [institutionDomain, setInstitutionDomain] = useState("");
@@ -49,6 +59,15 @@ function VerifyStep() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hydrated) return;
+    if (existingAccountOnboarding && bootstrap) {
+      navigate({
+        to: getAuthenticatedInstitutionOnboardingPath(bootstrap, institutionOnboardingRequired),
+        replace: true,
+      });
+      return;
+    }
+
     const syncDraftState = () => {
       const draft = getInstitutionSignupDraft();
       if (!draft) {
@@ -86,7 +105,7 @@ function VerifyStep() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired, navigate]);
 
   const domainMatch =
     !!institutionDomain &&
@@ -136,6 +155,18 @@ function VerifyStep() {
     updateInstitutionVerification({ method, emailStatus, manualNote: note });
     navigate({ to: "/institution/signup/review" });
   };
+
+  if (!hydrated || existingAccountOnboarding) {
+    return (
+      <SignupShell
+        step="verify"
+        title="Preparing your institution workspace"
+        description="Your signed-in KairoID account is already verified."
+      >
+        <p className="text-sm text-muted-foreground">Continuing to workspace setup…</p>
+      </SignupShell>
+    );
+  }
 
   return (
     <SignupShell
@@ -260,7 +291,7 @@ function VerifyStep() {
           onSelect={() => chooseMethod("manual")}
           Icon={ShieldCheck}
           title="Manual review"
-          body="Submit your request for Kairo review. Useful when no institutional email is available."
+          body="Submit your request for KairoID review. Useful when no institutional email is available."
           disabled={!institutionDemoModeEnabled}
         >
           {method === "manual" && (

@@ -1,5 +1,5 @@
 // Institution Workspace typed models.
-// BACKEND-INTEGRATION: these mirror the shapes we expect Kairo's backend to return.
+// BACKEND-INTEGRATION: these mirror the shapes we expect KairoID's backend to return.
 
 export type VerificationStatus =
   | "pending"

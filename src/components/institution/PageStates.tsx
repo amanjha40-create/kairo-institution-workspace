@@ -80,7 +80,7 @@ export function NotFoundState({
 
 export function ServiceUnavailableState({
   title = "This workspace feature is unavailable",
-  description = "Institution backend access has not been connected yet. Kairo will enable this flow once the approved API contract is available.",
+  description = "Institution backend access has not been connected yet. KairoID will enable this flow once the approved API contract is available.",
   action,
 }: {
   title?: string;

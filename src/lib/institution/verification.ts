@@ -53,7 +53,7 @@ export function getVerificationNextAction(status: VerificationStatus) {
     case "pending_admin_review":
     case "pending_admin_quality_review":
     case "pending_admin_re_review":
-      return "Await Kairo review";
+      return "Await KairoID review";
     case "awaiting_subject_corrections":
       return "Await candidate corrections";
     case "pending_subject_acceptance":

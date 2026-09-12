@@ -286,8 +286,8 @@ function StudentRosterImportDetailPage() {
               Column mapping
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Match each file column to a Kairo field. Recognized columns are auto-mapped; choose Do
-              not import for columns you do not need.
+              Match each file column to a KairoID field. Recognized columns are auto-mapped; choose
+              Do not import for columns you do not need.
             </p>
           </div>
 
@@ -317,7 +317,7 @@ function StudentRosterImportDetailPage() {
                     Your file column
                   </th>
                   <th scope="col" className="px-4 py-2 font-medium">
-                    Kairo field
+                    KairoID field
                   </th>
                   <th scope="col" className="px-4 py-2 font-medium">
                     Status

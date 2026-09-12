@@ -511,11 +511,11 @@ function RosterOnlyPersonDetail({
         </dl>
         <p className="mt-4 rounded-md border border-border bg-secondary/50 p-3 text-xs text-muted-foreground">
           This record was supplied by the institution and is not presented as independently verified
-          by Kairo.
+          by KairoID.
         </p>
       </Section>
 
-      <Section title="Kairo profile connection">
+      <Section title="KairoID profile connection">
         <div className="rounded-md border border-dashed border-border bg-secondary/40 p-4 text-sm">
           <div className="font-medium">Candidate-owned information unavailable</div>
           <p className="mt-1 text-xs text-muted-foreground">

@@ -5,7 +5,11 @@ import { KairoLogo } from "@/components/institution/Logo";
 import { useInstitutionAuth } from "@/lib/institution/auth";
 import { institutionAppConfig, institutionDemoModeEnabled } from "@/lib/institution/config";
 import { getInstitutionErrorMessage } from "@/lib/institution/errors";
-import { getInstitutionSignupContinuationPath } from "@/lib/institution/signup";
+import {
+  getAuthenticatedInstitutionOnboardingPath,
+  getInstitutionSignupContinuationPath,
+  isAuthenticatedFirstWorkspaceOnboarding,
+} from "@/lib/institution/signup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,12 +29,12 @@ export const Route = createFileRoute("/institution/login")({
       { title: "Sign in — Institution Trust Workspace" },
       {
         name: "description",
-        content: "Secure sign in for institutions using Kairo's Trust Workspace.",
+        content: "Secure sign in for institutions using KairoID's Trust Workspace.",
       },
       { property: "og:title", content: "Sign in — Institution Trust Workspace" },
       {
         property: "og:description",
-        content: "Secure sign in for institutions using Kairo's Trust Workspace.",
+        content: "Secure sign in for institutions using KairoID's Trust Workspace.",
       },
     ],
   }),
@@ -54,11 +58,22 @@ function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const nextSession = await signIn(email, password);
+      const nextState = await signIn(email, password);
+      const isExistingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+        nextState.authenticated,
+        nextState.bootstrap,
+        nextState.institutionOnboardingRequired,
+      );
+      if (nextState.error) throw nextState.error;
       navigate({
-        to: nextSession
+        to: nextState.session
           ? (search.redirect ?? "/institution/verifications")
-          : getInstitutionSignupContinuationPath(),
+          : isExistingAccountOnboarding && nextState.bootstrap
+            ? getAuthenticatedInstitutionOnboardingPath(
+                nextState.bootstrap,
+                nextState.institutionOnboardingRequired,
+              )
+            : getInstitutionSignupContinuationPath(),
         replace: true,
       });
     } catch (err) {
@@ -232,7 +247,7 @@ function LoginPage() {
         </p>
         <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs">
           <span className="text-muted-foreground">
-            New to Kairo?{" "}
+            New to KairoID?{" "}
             <Link
               to="/institution/signup"
               className="font-medium text-[color:var(--kairo-navy)] underline-offset-2 hover:underline"
@@ -244,7 +259,7 @@ function LoginPage() {
             to="/institution"
             className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
-            Learn how Kairo helps institutions
+            Learn how KairoID helps institutions
           </Link>
         </div>
       </div>

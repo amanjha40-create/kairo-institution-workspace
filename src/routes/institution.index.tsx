@@ -35,13 +35,13 @@ export const Route = createFileRoute("/institution/")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Kairo for Institutions — Protect the trust behind every credential" },
+      { title: "KairoID for Institutions — Protect the trust behind every credential" },
       {
         name: "description",
         content:
-          "Kairo helps institutions respond to education verification requests, confirm credentials faster, and protect their name from inaccurate or unverified claims.",
+          "KairoID helps institutions respond to education verification requests, confirm credentials faster, and protect their name from inaccurate or unverified claims.",
       },
-      { property: "og:title", content: "Kairo for Institutions" },
+      { property: "og:title", content: "KairoID for Institutions" },
       {
         property: "og:description",
         content:
@@ -282,7 +282,7 @@ function PublicInstitutionPage() {
               Protect the trust behind every credential you issue.
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
-              Kairo helps institutions respond to education verification requests, confirm
+              KairoID helps institutions respond to education verification requests, confirm
               credentials faster, and protect their name from inaccurate or unverified claims.
             </p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
@@ -332,7 +332,7 @@ function PublicInstitutionPage() {
             <ValueCard
               Icon={ShieldCheck}
               title="Protect your institution's name"
-              body="Distinguish institution-verified credentials from pending, incorrect, disputed, or revoked claims made through Kairo."
+              body="Distinguish institution-verified credentials from pending, incorrect, disputed, or revoked claims made through KairoID."
             />
             <ValueCard
               Icon={ClipboardCheck}
@@ -351,7 +351,7 @@ function PublicInstitutionPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              How Kairo works for institutions
+              How KairoID works for institutions
             </h2>
           </div>
           <ol className="mt-10 grid gap-4 md:grid-cols-4">
@@ -373,7 +373,7 @@ function PublicInstitutionPage() {
             <Step
               n={4}
               title="Build persistent trust"
-              body="The verified education credential remains connected to the individual's Kairo Trust Passport."
+              body="The verified education credential remains connected to the individual's KairoID Trust Passport."
             />
           </ol>
         </div>
@@ -384,7 +384,7 @@ function PublicInstitutionPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              Use Kairo once, or manage every request in one place.
+              Use KairoID once, or manage every request in one place.
             </h2>
           </div>
           <div className="mt-10 grid gap-5 md:grid-cols-2">
@@ -441,12 +441,12 @@ function PublicInstitutionPage() {
                 The institution stays in control.
               </h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                Kairo is built so authority stays where it belongs — with the institution that
+                KairoID is built so authority stays where it belongs — with the institution that
                 issued the credential.
               </p>
             </div>
             <ul className="space-y-3">
-              <TrustItem>Kairo does not make the final verification decision.</TrustItem>
+              <TrustItem>KairoID does not make the final verification decision.</TrustItem>
               <TrustItem>The institution confirms or corrects its own records.</TrustItem>
               <TrustItem>
                 Professional information is shown only when the individual has consented to share
@@ -502,7 +502,7 @@ function PublicInstitutionPage() {
 
       <footer className="border-t border-border/60 bg-white py-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 text-xs text-muted-foreground sm:flex-row sm:px-6">
-          <div>© {new Date().getFullYear()} Kairo. All rights reserved.</div>
+          <div>© {new Date().getFullYear()} KairoID. All rights reserved.</div>
           <div className="flex items-center gap-4">
             <Link to="/institution/login" className="hover:text-foreground">
               Sign in

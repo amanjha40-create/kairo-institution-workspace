@@ -1,20 +1,23 @@
 import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { InstitutionAuthProvider, useInstitutionAuth } from "@/lib/institution/auth";
-import { getInstitutionSignupContinuationPath } from "@/lib/institution/signup";
+import {
+  getAuthenticatedInstitutionOnboardingPath,
+  isAuthenticatedFirstWorkspaceOnboarding,
+} from "@/lib/institution/signup";
 import { ServiceUnavailableState } from "@/components/institution/PageStates";
 import { WorkspaceShell } from "@/components/institution/WorkspaceShell";
 
 export const Route = createFileRoute("/institution")({
   head: () => ({
     meta: [
-      { title: "Institution Trust Workspace — Kairo" },
+      { title: "Institution Trust Workspace — KairoID" },
       {
         name: "description",
         content:
           "A focused workspace for institutions to verify education claims and protect their trust and reputation.",
       },
-      { property: "og:title", content: "Institution Trust Workspace — Kairo" },
+      { property: "og:title", content: "Institution Trust Workspace — KairoID" },
       {
         property: "og:description",
         content:
@@ -36,7 +39,8 @@ function InstitutionLayout() {
 function InstitutionLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, hydrated, authenticated, bootstrap, error } = useInstitutionAuth();
+  const { session, hydrated, authenticated, bootstrap, institutionOnboardingRequired, error } =
+    useInstitutionAuth();
 
   const path = location.pathname;
   const isInstitutionHome = path === "/institution" || path === "/institution/";
@@ -58,13 +62,30 @@ function InstitutionLayoutInner() {
       });
       return;
     }
-    if (!session && bootstrap?.state === "no_org") {
+    if (
+      !session &&
+      isAuthenticatedFirstWorkspaceOnboarding(
+        authenticated,
+        bootstrap,
+        institutionOnboardingRequired,
+      ) &&
+      bootstrap
+    ) {
       navigate({
-        to: getInstitutionSignupContinuationPath(),
+        to: getAuthenticatedInstitutionOnboardingPath(bootstrap, institutionOnboardingRequired),
         replace: true,
       });
     }
-  }, [authenticated, bootstrap?.state, hydrated, isPublic, navigate, path, session]);
+  }, [
+    authenticated,
+    bootstrap,
+    hydrated,
+    institutionOnboardingRequired,
+    isPublic,
+    navigate,
+    path,
+    session,
+  ]);
 
   if (isAlwaysPublic || shouldExposePublicHome) return <Outlet />;
   if (!hydrated) {

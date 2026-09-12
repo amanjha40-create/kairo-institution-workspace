@@ -76,35 +76,35 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Kairo — Trust for institutions and the people they educate" },
+      { title: "KairoID — Trust for institutions and the people they educate" },
       {
         name: "description",
-        content:
-          "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
+        content: "KairoID helps institutions verify once and stay trusted everywhere.",
       },
-      { name: "author", content: "Kairo" },
+      { name: "author", content: "KairoID" },
       {
         property: "og:title",
-        content: "Kairo — Trust for institutions and the people they educate",
+        content: "KairoID — Trust for institutions and the people they educate",
       },
       {
         property: "og:description",
-        content:
-          "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
+        content: "KairoID helps institutions verify once and stay trusted everywhere.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       {
         name: "twitter:title",
-        content: "Kairo — Trust for institutions and the people they educate",
+        content: "KairoID — Trust for institutions and the people they educate",
       },
       {
         name: "twitter:description",
-        content:
-          "Kairo helps universities, colleges and training institutes issue, verify and protect educational trust.",
+        content: "KairoID helps institutions verify once and stay trusted everywhere.",
       },
     ],
     links: [
+      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
+      { rel: "icon", type: "image/png", sizes: "512x512", href: "/kairo-mark.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       {
         rel: "stylesheet",
         href: appCss,

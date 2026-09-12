@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 import {
   getInstitutionSignupDraft,
+  isAuthenticatedFirstWorkspaceOnboarding,
+  prepareAuthenticatedInstitutionOnboarding,
   updateInstitutionAdministrator,
   type InstitutionAdministrator,
 } from "@/lib/institution/signup";
@@ -18,29 +21,32 @@ export const Route = createFileRoute("/institution/signup/admin")({
       { title: "Administrator — Create Institution Workspace" },
       {
         name: "description",
-        content: "Add the primary administrator for your Kairo institution workspace.",
+        content: "Add the primary administrator for your KairoID institution workspace.",
       },
-      { property: "og:title", content: "Administrator — Kairo" },
+      { property: "og:title", content: "Administrator — KairoID" },
       {
         property: "og:description",
-        content: "Add the primary administrator for your Kairo workspace.",
+        content: "Add the primary administrator for your KairoID workspace.",
       },
     ],
   }),
   component: AdminStep,
 });
 
-const schema = z
-  .object({
-    fullName: z.string().trim().min(2, "Full name is required").max(120),
-    jobTitle: z.string().trim().min(2, "Job title is required").max(120),
-    workEmail: z.string().trim().email("Enter a valid work email").max(200),
-    phone: z.string().trim().max(40).optional().or(z.literal("")),
+const administratorSchema = z.object({
+  fullName: z.string().trim().min(2, "Full name is required").max(120),
+  jobTitle: z.string().trim().min(2, "Job title is required").max(120),
+  workEmail: z.string().trim().email("Enter a valid work email").max(200),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+  authorized: z.literal(true, {
+    errorMap: () => ({ message: "You must confirm your authority" }),
+  }),
+});
+
+const newAccountSchema = administratorSchema
+  .extend({
     password: z.string().min(12, "Password must be at least 12 characters").max(200),
     confirmPassword: z.string().min(12, "Confirm your password").max(200),
-    authorized: z.literal(true, {
-      errorMap: () => ({ message: "You must confirm your authority" }),
-    }),
   })
   .refine((d) => d.password === d.confirmPassword, {
     message: "Passwords do not match",
@@ -49,6 +55,13 @@ const schema = z
 
 function AdminStep() {
   const navigate = useNavigate();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
+  const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+    authenticated,
+    bootstrap,
+    institutionOnboardingRequired,
+  );
   const [form, setForm] = useState<InstitutionAdministrator>({
     fullName: "",
     jobTitle: "",
@@ -61,20 +74,26 @@ function AdminStep() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const draft = getInstitutionSignupDraft();
+    if (!hydrated) return;
+    const draft =
+      existingAccountOnboarding && bootstrap
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired)
+        : getInstitutionSignupDraft();
     if (!draft) {
       navigate({ to: "/institution/signup/institution", replace: true });
       return;
     }
     setForm(draft.administrator);
-  }, [navigate]);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired, navigate]);
 
   const update = <K extends keyof InstitutionAdministrator>(k: K, v: InstitutionAdministrator[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = schema.safeParse(form);
+    const parsed = (existingAccountOnboarding ? administratorSchema : newAccountSchema).safeParse(
+      form,
+    );
     if (!parsed.success) {
       const map: Record<string, string> = {};
       parsed.error.issues.forEach((i) => {
@@ -85,19 +104,38 @@ function AdminStep() {
     }
     setErrors({});
     updateInstitutionAdministrator(form);
+    if (existingAccountOnboarding && bootstrap) {
+      prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired);
+      navigate({ to: "/institution/signup/review" });
+      return;
+    }
     navigate({ to: "/institution/signup/verify" });
   };
 
   return (
     <SignupShell
       step="admin"
-      title="Administrator details"
-      description="The primary administrator signs in with their work email. Phone verification is not required for this flow."
+      title={existingAccountOnboarding ? "Workspace administrator" : "Administrator details"}
+      description={
+        existingAccountOnboarding
+          ? "Confirm who will own this institution workspace. Your existing KairoID account remains unchanged."
+          : "The primary administrator signs in with their work email. Phone verification is not required for this flow."
+      }
     >
       <form onSubmit={onSubmit} className="space-y-5">
+        {existingAccountOnboarding && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            You are already signed in with a verified KairoID account. No new password or email code
+            is required.
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Full name" error={errors.fullName}>
-            <Input value={form.fullName} onChange={(e) => update("fullName", e.target.value)} />
+            <Input
+              value={form.fullName}
+              onChange={(e) => update("fullName", e.target.value)}
+              disabled={existingAccountOnboarding}
+            />
           </Field>
           <Field label="Job title" error={errors.jobTitle}>
             <Input value={form.jobTitle} onChange={(e) => update("jobTitle", e.target.value)} />
@@ -107,25 +145,30 @@ function AdminStep() {
               type="email"
               value={form.workEmail}
               onChange={(e) => update("workEmail", e.target.value)}
+              disabled={existingAccountOnboarding}
             />
           </Field>
           <Field label="Phone number (optional)" error={errors.phone}>
             <Input value={form.phone ?? ""} onChange={(e) => update("phone", e.target.value)} />
           </Field>
-          <Field label="Password" error={errors.password}>
-            <Input
-              type="password"
-              value={form.password}
-              onChange={(e) => update("password", e.target.value)}
-            />
-          </Field>
-          <Field label="Confirm password" error={errors.confirmPassword}>
-            <Input
-              type="password"
-              value={form.confirmPassword}
-              onChange={(e) => update("confirmPassword", e.target.value)}
-            />
-          </Field>
+          {!existingAccountOnboarding && (
+            <>
+              <Field label="Password" error={errors.password}>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => update("password", e.target.value)}
+                />
+              </Field>
+              <Field label="Confirm password" error={errors.confirmPassword}>
+                <Input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(e) => update("confirmPassword", e.target.value)}
+                />
+              </Field>
+            </>
+          )}
         </div>
         <div className="flex items-start gap-2 rounded-md border border-border bg-secondary/40 p-3">
           <Checkbox
@@ -134,7 +177,7 @@ function AdminStep() {
             onCheckedChange={(v) => update("authorized", v === true)}
           />
           <label htmlFor="authorized" className="text-xs text-foreground">
-            I confirm that I am authorized to create or request access to this institution's Kairo
+            I confirm that I am authorized to create or request access to this institution's KairoID
             workspace.
           </label>
         </div>

@@ -132,7 +132,7 @@ describe("institution repositories and public verification flows", () => {
           expires_at: "2026-08-26T18:00:00Z",
           request: {
             reference: "VR-PUBLIC-001",
-            requested_by: "Kairo Verification Operations",
+            requested_by: "KairoID Verification Operations",
             purpose: "Education verification request",
             request_date: "2026-08-26T10:00:00Z",
             consent_received: true,
@@ -181,7 +181,7 @@ describe("institution repositories and public verification flows", () => {
       expiresAt: "2026-08-26T18:00:00Z",
       request: {
         reference: "VR-PUBLIC-001",
-        requestedBy: "Kairo Verification Operations",
+        requestedBy: "KairoID Verification Operations",
         purpose: "Education verification request",
         consentReceived: true,
         candidate: expect.objectContaining({

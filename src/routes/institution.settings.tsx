@@ -309,7 +309,7 @@ function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Configure your institution profile, account preferences, notifications, and security
-          controls supported by the shared Kairo backend.
+          controls supported by the shared KairoID backend.
         </p>
       </div>
 

@@ -3,6 +3,7 @@ import {
   completeInstitutionPasswordReset,
   getInstitutionWorkspaceBootstrap,
   getStoredInstitutionAuthTokens,
+  listCurrentOrganizationMemberships,
   loginInstitutionUser,
   logoutInstitutionUser,
   refreshInstitutionUserSession,
@@ -10,7 +11,12 @@ import {
   storeInstitutionAuthTokens,
 } from "./backend";
 import { institutionAppConfig } from "./config";
-import { apiNotConfiguredError, invalidCredentialsError, type InstitutionError } from "./errors";
+import {
+  apiNotConfiguredError,
+  invalidCredentialsError,
+  serviceUnavailableError,
+  type InstitutionError,
+} from "./errors";
 import type { InstitutionWorkspaceBootstrap, Session } from "./types";
 
 const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "true";
@@ -21,6 +27,7 @@ export interface InstitutionAuthState {
   session: Session | null;
   bootstrap: InstitutionWorkspaceBootstrap | null;
   authenticated: boolean;
+  institutionOnboardingRequired: boolean;
   error: InstitutionError | null;
 }
 
@@ -36,7 +43,7 @@ export interface InstitutionAuthAdapter {
 interface AuthContextValue extends InstitutionAuthState {
   hydrated: boolean;
   isDemoMode: boolean;
-  signIn: (email: string, password: string) => Promise<Session | null>;
+  signIn: (email: string, password: string) => Promise<InstitutionAuthState>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<Session | null>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -138,12 +145,70 @@ function mapBootstrapToSession(
   };
 }
 
+async function resolveInstitutionWorkspaceContext(
+  bootstrap: InstitutionWorkspaceBootstrap,
+  accessToken: string,
+  expiresAt?: string,
+): Promise<InstitutionAuthState> {
+  const session = mapBootstrapToSession(bootstrap, expiresAt);
+  if (session) {
+    return {
+      session,
+      bootstrap,
+      authenticated: true,
+      institutionOnboardingRequired: false,
+      error: null,
+    };
+  }
+
+  if (
+    bootstrap.state === "no_org" &&
+    bootstrap.activeOrganization === null &&
+    bootstrap.membershipRole === null
+  ) {
+    return {
+      session: null,
+      bootstrap,
+      authenticated: true,
+      institutionOnboardingRequired: true,
+      error: null,
+    };
+  }
+
+  const memberships = await listCurrentOrganizationMemberships(accessToken);
+  const institutionMembership = memberships.find(
+    (membership) => membership.organizationType === "university",
+  );
+
+  if (institutionMembership) {
+    return {
+      session: null,
+      bootstrap,
+      authenticated: true,
+      institutionOnboardingRequired: false,
+      error: serviceUnavailableError(
+        "An Institution membership exists but is not the active organization context.",
+        "Your Institution workspace could not be selected. Please contact KairoID support.",
+      ),
+    };
+  }
+
+  return {
+    session: null,
+    bootstrap,
+    authenticated: true,
+    institutionOnboardingRequired: true,
+    error: null,
+  };
+}
+
 async function resolveProductionAuthState(forceRefresh = false): Promise<InstitutionAuthState> {
   if (!institutionAppConfig.backendConfigured) {
     return {
       session: null,
       bootstrap: null,
       authenticated: false,
+      institutionOnboardingRequired: false,
       error: null,
     };
   }
@@ -154,6 +219,7 @@ async function resolveProductionAuthState(forceRefresh = false): Promise<Institu
       session: null,
       bootstrap: null,
       authenticated: false,
+      institutionOnboardingRequired: false,
       error: null,
     };
   }
@@ -169,6 +235,7 @@ async function resolveProductionAuthState(forceRefresh = false): Promise<Institu
         session: null,
         bootstrap: null,
         authenticated: false,
+        institutionOnboardingRequired: false,
         error: null,
       };
     }
@@ -176,29 +243,28 @@ async function resolveProductionAuthState(forceRefresh = false): Promise<Institu
 
   try {
     const bootstrap = await getInstitutionWorkspaceBootstrap(nextTokens.accessToken);
-    return {
-      session: mapBootstrapToSession(bootstrap, nextTokens.expiresAt),
+    return resolveInstitutionWorkspaceContext(
       bootstrap,
-      authenticated: true,
-      error: null,
-    };
+      nextTokens.accessToken,
+      nextTokens.expiresAt,
+    );
   } catch (error) {
     if (error instanceof Error && "status" in error && (error as InstitutionError).status === 401) {
       try {
         nextTokens = await refreshInstitutionUserSession(nextTokens.refreshToken);
         const bootstrap = await getInstitutionWorkspaceBootstrap(nextTokens.accessToken);
-        return {
-          session: mapBootstrapToSession(bootstrap, nextTokens.expiresAt),
+        return resolveInstitutionWorkspaceContext(
           bootstrap,
-          authenticated: true,
-          error: null,
-        };
+          nextTokens.accessToken,
+          nextTokens.expiresAt,
+        );
       } catch {
         storeInstitutionAuthTokens(null);
         return {
           session: null,
           bootstrap: null,
           authenticated: false,
+          institutionOnboardingRequired: false,
           error: null,
         };
       }
@@ -208,6 +274,7 @@ async function resolveProductionAuthState(forceRefresh = false): Promise<Institu
       session: null,
       bootstrap: null,
       authenticated: true,
+      institutionOnboardingRequired: false,
       error: error as InstitutionError,
     };
   }
@@ -234,6 +301,7 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
             session: null,
             bootstrap: null,
             authenticated: false,
+            institutionOnboardingRequired: false,
             error: null,
           };
         }
@@ -243,6 +311,7 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
             session: null,
             bootstrap: null,
             authenticated: false,
+            institutionOnboardingRequired: false,
             error: null,
           };
         }
@@ -251,6 +320,7 @@ function getInstitutionAuthAdapter(): InstitutionAuthAdapter {
           session,
           bootstrap: null,
           authenticated: true,
+          institutionOnboardingRequired: false,
           error: null,
         };
       },
@@ -309,6 +379,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [bootstrap, setBootstrap] = useState<InstitutionWorkspaceBootstrap | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [institutionOnboardingRequired, setInstitutionOnboardingRequired] = useState(false);
   const [authError, setAuthError] = useState<InstitutionError | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const adapter = useMemo(() => getInstitutionAuthAdapter(), []);
@@ -321,6 +392,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
       setSession(state.session);
       setBootstrap(state.bootstrap);
       setAuthenticated(state.authenticated);
+      setInstitutionOnboardingRequired(state.institutionOnboardingRequired);
       setAuthError(state.error);
       setHydrated(true);
     });
@@ -336,8 +408,9 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
     setSession(state.session);
     setBootstrap(state.bootstrap);
     setAuthenticated(state.authenticated);
+    setInstitutionOnboardingRequired(state.institutionOnboardingRequired);
     setAuthError(state.error);
-    return state.session;
+    return state;
   };
 
   const signOut = async () => {
@@ -345,6 +418,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setBootstrap(null);
     setAuthenticated(false);
+    setInstitutionOnboardingRequired(false);
     setAuthError(null);
   };
 
@@ -353,6 +427,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
     setSession(state.session);
     setBootstrap(state.bootstrap);
     setAuthenticated(state.authenticated);
+    setInstitutionOnboardingRequired(state.institutionOnboardingRequired);
     setAuthError(state.error);
     return state.session;
   };
@@ -363,6 +438,7 @@ export function InstitutionAuthProvider({ children }: { children: ReactNode }) {
         session,
         bootstrap,
         authenticated,
+        institutionOnboardingRequired,
         error: authError,
         hydrated,
         isDemoMode: institutionAppConfig.demoMode,

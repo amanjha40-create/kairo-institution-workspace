@@ -8,13 +8,16 @@ import { Label } from "@/components/ui/label";
 import {
   createInstitutionSignupDraft,
   getInstitutionSignupDraft,
+  isAuthenticatedFirstWorkspaceOnboarding,
   isPersonalEmailDomain,
+  prepareAuthenticatedInstitutionOnboarding,
   SUPPORTED_INSTITUTION_TYPE_OPTIONS,
   updateInstitutionDetails,
   type InstitutionDetails,
   type InstitutionType,
 } from "@/lib/institution/signup";
 import { AlertTriangle } from "lucide-react";
+import { useInstitutionAuth } from "@/lib/institution/auth";
 
 export const Route = createFileRoute("/institution/signup/institution")({
   head: () => ({
@@ -22,9 +25,9 @@ export const Route = createFileRoute("/institution/signup/institution")({
       { title: "Institution details — Create Institution Workspace" },
       {
         name: "description",
-        content: "Tell us about your institution to begin creating a Kairo workspace.",
+        content: "Tell us about your institution to begin creating a KairoID workspace.",
       },
-      { property: "og:title", content: "Institution details — Kairo" },
+      { property: "og:title", content: "Institution details — KairoID" },
       { property: "og:description", content: "Start creating your Institution Workspace." },
     ],
   }),
@@ -45,6 +48,13 @@ const schema = z.object({
 
 function InstitutionStep() {
   const navigate = useNavigate();
+  const { authenticated, bootstrap, hydrated, institutionOnboardingRequired } =
+    useInstitutionAuth();
+  const existingAccountOnboarding = isAuthenticatedFirstWorkspaceOnboarding(
+    authenticated,
+    bootstrap,
+    institutionOnboardingRequired,
+  );
   const [form, setForm] = useState<InstitutionDetails>({
     name: "",
     type: "",
@@ -58,7 +68,11 @@ function InstitutionStep() {
   const [warning, setWarning] = useState<string | null>(null);
 
   useEffect(() => {
-    const draft = getInstitutionSignupDraft() ?? createInstitutionSignupDraft();
+    if (!hydrated) return;
+    const draft =
+      existingAccountOnboarding && bootstrap
+        ? prepareAuthenticatedInstitutionOnboarding(bootstrap, institutionOnboardingRequired)
+        : (getInstitutionSignupDraft() ?? createInstitutionSignupDraft());
     setForm({
       ...draft.institution,
       type:
@@ -66,7 +80,7 @@ function InstitutionStep() {
           ? draft.institution.type
           : "",
     });
-  }, []);
+  }, [bootstrap, existingAccountOnboarding, hydrated, institutionOnboardingRequired]);
 
   const update = <K extends keyof InstitutionDetails>(key: K, value: InstitutionDetails[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -99,8 +113,16 @@ function InstitutionStep() {
   return (
     <SignupShell
       step="institution"
-      title="Tell us about your institution"
-      description="We use these details to create your workspace and to route verification requests to the right team."
+      title={
+        existingAccountOnboarding
+          ? "Set up your institution workspace"
+          : "Tell us about your institution"
+      }
+      description={
+        existingAccountOnboarding
+          ? "Add the institution details for your signed-in KairoID account."
+          : "We use these details to create your workspace and to route verification requests to the right team."
+      }
     >
       <form onSubmit={onSubmit} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
