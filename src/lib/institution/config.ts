@@ -55,7 +55,7 @@ if (!parsedConfig.success) {
       "Production builds cannot enable demo mode. Set VITE_DEMO_MODE=false before deploying.";
   } else if (env.VITE_APP_ENV === "production" && !configuredApiBaseUrl) {
     configError =
-      "Production builds require VITE_API_BASE_URL to be set to the HTTPS Kairo API origin.";
+      "Production builds require VITE_API_BASE_URL to be set to the HTTPS KairoID API origin.";
   } else if (
     env.VITE_APP_ENV === "production" &&
     configuredApiBaseUrl &&

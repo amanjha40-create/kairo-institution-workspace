@@ -25,9 +25,9 @@ export const Route = createFileRoute("/institution/signup/institution")({
       { title: "Institution details — Create Institution Workspace" },
       {
         name: "description",
-        content: "Tell us about your institution to begin creating a Kairo workspace.",
+        content: "Tell us about your institution to begin creating a KairoID workspace.",
       },
-      { property: "og:title", content: "Institution details — Kairo" },
+      { property: "og:title", content: "Institution details — KairoID" },
       { property: "og:description", content: "Start creating your Institution Workspace." },
     ],
   }),
@@ -120,7 +120,7 @@ function InstitutionStep() {
       }
       description={
         existingAccountOnboarding
-          ? "Add the institution details for your signed-in Kairo account."
+          ? "Add the institution details for your signed-in KairoID account."
           : "We use these details to create your workspace and to route verification requests to the right team."
       }
     >

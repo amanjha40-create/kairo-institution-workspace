@@ -177,7 +177,7 @@ function StudentRosterImportPage() {
           <li>Include a usable name for every student.</li>
           <li>Include Student ID, Roll Number, or Institution Email for identity matching.</li>
           <li>Review the mapping and preview before confirming the import.</li>
-          <li>Imported records are organization-provided and are not Kairo verified.</li>
+          <li>Imported records are organization-provided and are not KairoID verified.</li>
         </ul>
       </aside>
     </div>

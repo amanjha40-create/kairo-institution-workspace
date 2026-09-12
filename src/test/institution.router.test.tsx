@@ -481,7 +481,7 @@ describe("institution routing and permissions", () => {
       });
 
       expect(await screen.findByRole("heading", { name: "Review and submit" })).toBeInTheDocument();
-      expect(screen.getByText("Existing verified Kairo account")).toBeInTheDocument();
+      expect(screen.getByText("Existing verified KairoID account")).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Send verification code" }),
       ).not.toBeInTheDocument();

@@ -188,7 +188,7 @@ async function resolveInstitutionWorkspaceContext(
       institutionOnboardingRequired: false,
       error: serviceUnavailableError(
         "An Institution membership exists but is not the active organization context.",
-        "Your Institution workspace could not be selected. Please contact Kairo support.",
+        "Your Institution workspace could not be selected. Please contact KairoID support.",
       ),
     };
   }

@@ -25,13 +25,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/institution/signup/verify")({
   head: () => ({
     meta: [
-      { title: "Verify your institution — Kairo" },
+      { title: "Verify your institution — KairoID" },
       {
         name: "description",
         content:
-          "Verify your institution to activate authority to issue or revoke credentials on Kairo.",
+          "Verify your institution to activate authority to issue or revoke credentials on KairoID.",
       },
-      { property: "og:title", content: "Verify your institution — Kairo" },
+      { property: "og:title", content: "Verify your institution — KairoID" },
       { property: "og:description", content: "Choose a verification method for your institution." },
     ],
   }),
@@ -161,7 +161,7 @@ function VerifyStep() {
       <SignupShell
         step="verify"
         title="Preparing your institution workspace"
-        description="Your signed-in Kairo account is already verified."
+        description="Your signed-in KairoID account is already verified."
       >
         <p className="text-sm text-muted-foreground">Continuing to workspace setup…</p>
       </SignupShell>
@@ -291,7 +291,7 @@ function VerifyStep() {
           onSelect={() => chooseMethod("manual")}
           Icon={ShieldCheck}
           title="Manual review"
-          body="Submit your request for Kairo review. Useful when no institutional email is available."
+          body="Submit your request for KairoID review. Useful when no institutional email is available."
           disabled={!institutionDemoModeEnabled}
         >
           {method === "manual" && (

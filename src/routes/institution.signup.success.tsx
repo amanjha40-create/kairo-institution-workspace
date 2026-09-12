@@ -14,12 +14,12 @@ import {
 export const Route = createFileRoute("/institution/signup/success")({
   head: () => ({
     meta: [
-      { title: "Workspace request submitted — Kairo" },
+      { title: "Workspace request submitted — KairoID" },
       {
         name: "description",
-        content: "Your Kairo institution workspace request has been submitted for review.",
+        content: "Your KairoID institution workspace request has been submitted for review.",
       },
-      { property: "og:title", content: "Workspace request submitted — Kairo" },
+      { property: "og:title", content: "Workspace request submitted — KairoID" },
       { property: "og:description", content: "We've received your institution workspace request." },
     ],
   }),
@@ -81,7 +81,7 @@ function SuccessPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button asChild variant="ghost">
-            <Link to="/institution">Return to Kairo for Institutions</Link>
+            <Link to="/institution">Return to KairoID for Institutions</Link>
           </Button>
           {session ? (
             <Button asChild>

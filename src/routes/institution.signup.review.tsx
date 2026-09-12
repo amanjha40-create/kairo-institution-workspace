@@ -19,12 +19,12 @@ import {
 export const Route = createFileRoute("/institution/signup/review")({
   head: () => ({
     meta: [
-      { title: "Review your workspace request — Kairo" },
+      { title: "Review your workspace request — KairoID" },
       {
         name: "description",
-        content: "Review your Kairo institution workspace request before submission.",
+        content: "Review your KairoID institution workspace request before submission.",
       },
-      { property: "og:title", content: "Review — Kairo" },
+      { property: "og:title", content: "Review — KairoID" },
       { property: "og:description", content: "Review your institution workspace request." },
     ],
   }),
@@ -153,7 +153,7 @@ function ReviewStep() {
             label="Method"
             value={
               existingAccountOnboarding
-                ? "Existing verified Kairo account"
+                ? "Existing verified KairoID account"
                 : METHOD_LABEL[draft.verification.method]
             }
           />
@@ -177,7 +177,7 @@ function ReviewStep() {
             id="authority"
             checked={ack.authority}
             onChange={(v) => setAck((a) => ({ ...a, authority: v }))}
-            label="I confirm that I am authorized to create this institution's workspace on Kairo."
+            label="I confirm that I am authorized to create this institution's workspace on KairoID."
           />
         </div>
 

@@ -28,12 +28,12 @@ import { institutionQueryKeys } from "@/lib/institution/query-keys";
 export const Route = createFileRoute("/institution/verify/$token")({
   head: () => ({
     meta: [
-      { title: "Education Verification Request — Kairo" },
+      { title: "Education Verification Request — KairoID" },
       {
         name: "description",
-        content: "Respond securely to a one-off education verification request from Kairo.",
+        content: "Respond securely to a one-off education verification request from KairoID.",
       },
-      { property: "og:title", content: "Education Verification Request — Kairo" },
+      { property: "og:title", content: "Education Verification Request — KairoID" },
       {
         property: "og:description",
         content: "Secure one-off education verification link.",
@@ -135,7 +135,7 @@ function MagicLinkPage() {
         ) : data.state === "valid" && !data.request ? (
           <ServiceUnavailableState
             title="This verification link is temporarily unavailable"
-            description="We couldn't load the verification request details from Kairo right now. Please try again."
+            description="We couldn't load the verification request details from KairoID right now. Please try again."
             action={
               <Button variant="outline" onClick={() => refetch()}>
                 Try again

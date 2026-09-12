@@ -11,13 +11,13 @@ import { WorkspaceShell } from "@/components/institution/WorkspaceShell";
 export const Route = createFileRoute("/institution")({
   head: () => ({
     meta: [
-      { title: "Institution Trust Workspace — Kairo" },
+      { title: "Institution Trust Workspace — KairoID" },
       {
         name: "description",
         content:
           "A focused workspace for institutions to verify education claims and protect their trust and reputation.",
       },
-      { property: "og:title", content: "Institution Trust Workspace — Kairo" },
+      { property: "og:title", content: "Institution Trust Workspace — KairoID" },
       {
         property: "og:description",
         content:

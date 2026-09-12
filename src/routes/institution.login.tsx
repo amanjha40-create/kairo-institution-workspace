@@ -29,12 +29,12 @@ export const Route = createFileRoute("/institution/login")({
       { title: "Sign in — Institution Trust Workspace" },
       {
         name: "description",
-        content: "Secure sign in for institutions using Kairo's Trust Workspace.",
+        content: "Secure sign in for institutions using KairoID's Trust Workspace.",
       },
       { property: "og:title", content: "Sign in — Institution Trust Workspace" },
       {
         property: "og:description",
-        content: "Secure sign in for institutions using Kairo's Trust Workspace.",
+        content: "Secure sign in for institutions using KairoID's Trust Workspace.",
       },
     ],
   }),
@@ -247,7 +247,7 @@ function LoginPage() {
         </p>
         <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs">
           <span className="text-muted-foreground">
-            New to Kairo?{" "}
+            New to KairoID?{" "}
             <Link
               to="/institution/signup"
               className="font-medium text-[color:var(--kairo-navy)] underline-offset-2 hover:underline"
@@ -259,7 +259,7 @@ function LoginPage() {
             to="/institution"
             className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
-            Learn how Kairo helps institutions
+            Learn how KairoID helps institutions
           </Link>
         </div>
       </div>

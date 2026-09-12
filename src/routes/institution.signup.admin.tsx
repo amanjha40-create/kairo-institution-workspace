@@ -21,12 +21,12 @@ export const Route = createFileRoute("/institution/signup/admin")({
       { title: "Administrator — Create Institution Workspace" },
       {
         name: "description",
-        content: "Add the primary administrator for your Kairo institution workspace.",
+        content: "Add the primary administrator for your KairoID institution workspace.",
       },
-      { property: "og:title", content: "Administrator — Kairo" },
+      { property: "og:title", content: "Administrator — KairoID" },
       {
         property: "og:description",
-        content: "Add the primary administrator for your Kairo workspace.",
+        content: "Add the primary administrator for your KairoID workspace.",
       },
     ],
   }),
@@ -118,14 +118,14 @@ function AdminStep() {
       title={existingAccountOnboarding ? "Workspace administrator" : "Administrator details"}
       description={
         existingAccountOnboarding
-          ? "Confirm who will own this institution workspace. Your existing Kairo account remains unchanged."
+          ? "Confirm who will own this institution workspace. Your existing KairoID account remains unchanged."
           : "The primary administrator signs in with their work email. Phone verification is not required for this flow."
       }
     >
       <form onSubmit={onSubmit} className="space-y-5">
         {existingAccountOnboarding && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-            You are already signed in with a verified Kairo account. No new password or email code
+            You are already signed in with a verified KairoID account. No new password or email code
             is required.
           </div>
         )}
@@ -177,7 +177,7 @@ function AdminStep() {
             onCheckedChange={(v) => update("authorized", v === true)}
           />
           <label htmlFor="authorized" className="text-xs text-foreground">
-            I confirm that I am authorized to create or request access to this institution's Kairo
+            I confirm that I am authorized to create or request access to this institution's KairoID
             workspace.
           </label>
         </div>

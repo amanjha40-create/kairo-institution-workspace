@@ -131,7 +131,7 @@ async function renderRoute(
                   sharedProfile: {
                     consented: true,
                     currentTitle: "Software Engineer",
-                    currentCompany: "Kairo Labs",
+                    currentCompany: "KairoID Labs",
                     fields: [
                       {
                         field: "current_title",
