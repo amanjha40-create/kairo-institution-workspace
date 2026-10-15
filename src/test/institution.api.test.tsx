@@ -627,6 +627,121 @@ describe("institution repositories and public verification flows", () => {
     );
   });
 
+  it("posts authenticated priority commands to the institution verification contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          public_id: "vr_001",
+          subject_name: "Amina Rahman",
+          request_type: "education",
+          status: "in_progress",
+          priority: "urgent",
+          due_date: null,
+          created_at: "2026-08-24T10:00:00Z",
+          updated_at: "2026-08-24T11:00:00Z",
+          assigned_reviewer_name: "Daniel Okafor",
+          education_institution_name: "Northbridge University",
+          education_degree: "Bachelor of Science",
+          organization_internal_note: null,
+          candidate_response: null,
+          candidate_response_submitted_at: null,
+          consented_fields: ["degree"],
+          consented_evidence_scope: [],
+          comparison: {
+            match_status: "record_unavailable",
+            candidate_claim: {
+              institution_name: "Northbridge University",
+              degree: "Bachelor of Science",
+              programme: "Computer Science",
+              admission: { period: "2020", date: null },
+              graduation: { period: "2024", date: null },
+            },
+            institution_record: {
+              found: false,
+              student_id: null,
+              degree: null,
+              programme: null,
+              department: null,
+              admission: { period: null, date: null },
+              graduation: { period: null, date: null },
+              verification_status: null,
+            },
+            fields: [],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await importBackendModule();
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    await expect(
+      backend.updateInstitutionVerificationPriority("inst_001", "vr_001", "urgent"),
+    ).resolves.toMatchObject({
+      id: "vr_001",
+      status: "in_progress",
+      priority: "urgent",
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/api/v1/organizations/inst_001/institution/verification-requests/vr_001/priority",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ priority: "urgent" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer access_token_123",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("preserves backend errors from institution priority commands", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "conflict",
+            message: "Cannot change priority for a closed verification request",
+          },
+        }),
+        {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const backend = await importBackendModule();
+    backend.storeInstitutionAuthTokens({
+      accessToken: "access_token_123",
+      refreshToken: "refresh_token_123",
+      tokenType: "Bearer",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    await expect(
+      backend.updateInstitutionVerificationPriority("inst_001", "vr_closed", "high"),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+    });
+  });
+
   it("falls back to authoritative verification and people totals when the dedicated dashboard endpoint is unavailable", async () => {
     vi.resetModules();
     vi.stubEnv("VITE_APP_ENV", "test");

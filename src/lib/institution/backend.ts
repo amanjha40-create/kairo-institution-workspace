@@ -3105,7 +3105,7 @@ export async function updateInstitutionVerificationPriority(
     const payload = await apiRequest<BackendInstitutionVerificationDetailResponse>(
       `/api/v1/organizations/${orgPublicId}/institution/verification-requests/${requestPublicId}/priority`,
       {
-        method: "PATCH",
+        method: "POST",
         body: JSON.stringify({ priority }),
       },
       accessToken,
